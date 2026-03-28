@@ -1,0 +1,50 @@
+# Worktrees
+.worktrees/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.env
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AIngram
+*.db
+.aingram/
+.ruff_cache/
+
+# Model weights — never commit
+*.pt
+*.gguf
+*.bin
+*.safetensors
+*.onnx
+
+# Training data
+data/
