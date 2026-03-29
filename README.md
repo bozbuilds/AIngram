@@ -92,6 +92,10 @@ For programmatic verification of a session chain, use `MemoryStore.verify()`.
 
 With `aingram[mcp]` installed, see `aingram.mcp_server.create_server` for tools such as `remember`, `recall`, `reference`, `verify`, and `get_experiment_context`, with optional bearer-token middleware.
 
+## Examples
+
+Runnable scripts using `MemoryStore.remember` / `MemoryStore.recall` live in [`examples/`](examples/). See [`examples/README.md`](examples/README.md).
+
 ## Development
 
 ```bash
@@ -100,8 +104,14 @@ pytest
 ruff check aingram/ && ruff format --check aingram/
 ```
 
+Guidelines and pre-push hygiene (including secret scanning) are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 Python **3.11+**.
+
+## Social
+
+Join the official Aingram discord here: https://discord.gg/zSJCFZnXxf
 
 ## License
 
-Apache-2.0. See `LICENSE` when present in this repository.
+Apache-2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).

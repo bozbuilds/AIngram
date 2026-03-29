@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest an idea or enhancement
+labels: ['enhancement']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to achieve? What is missing today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: >-
+        Sketch the API, behavior, or documentation change you have in mind
+        (optional but helpful).
+    validations:
+      required: false
