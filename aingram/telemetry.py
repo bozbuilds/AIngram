@@ -48,32 +48,7 @@ def _telemetry_url() -> str:
 
 def maybe_send_cli_telemetry(*, command: str | None, enabled: bool) -> None:
     """POST a single anonymous CLI event. Swallows all errors; never raises."""
-    # region agent log
-    def _dbg(msg: str, data: dict, hid: str) -> None:
-        import json
-        import time
-
-        try:
-            logf = Path(__file__).resolve().parent.parent / 'debug-58d1af.log'
-            logf.open('a', encoding='utf-8').write(
-                json.dumps(
-                    {
-                        'sessionId': '58d1af',
-                        'timestamp': int(time.time() * 1000),
-                        'location': 'aingram/telemetry.py:maybe_send_cli_telemetry',
-                        'message': msg,
-                        'data': data,
-                        'hypothesisId': hid,
-                    }
-                )
-                + '\n'
-            )
-        except OSError:
-            pass
-
-    # endregion
     if not enabled or not command:
-        _dbg('telemetry_skip', {'reason': 'disabled or no command', 'enabled': enabled}, 'H0')
         return
     payload = {
         'schema_version': 1,
@@ -83,22 +58,9 @@ def maybe_send_cli_telemetry(*, command: str | None, enabled: bool) -> None:
         'aingram_version': _package_version(),
     }
     url = _telemetry_url()
-    _dbg('telemetry_post_attempt', {'url': url, 'command': command}, 'H1')
     try:
         with httpx.Client(timeout=3.0) as client:
             r = client.post(url, json=payload, headers={'Content-Type': 'application/json'})
-            snippet = (r.text or '')[:300]
-            _dbg(
-                'telemetry_post_response',
-                {'status_code': r.status_code, 'body_snippet': snippet},
-                'H1',
-            )
             r.raise_for_status()
-            _dbg('telemetry_post_ok', {'status_code': r.status_code}, 'H1')
     except Exception as e:
-        _dbg(
-            'telemetry_post_error',
-            {'error_type': type(e).__name__, 'error': str(e)[:500]},
-            'H2',
-        )
         logger.debug('Telemetry send skipped: %s', e)

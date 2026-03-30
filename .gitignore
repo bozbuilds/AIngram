@@ -26,6 +26,9 @@ env/
 htmlcov/
 .tox/
 
+# Cursor / agent debug (local)
+debug-*.log
+
 # IDE
 .idea/
 .vscode/
