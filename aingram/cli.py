@@ -17,9 +17,25 @@ def cli_options(
         '--db',
         help='Path to the SQLite memory database',
     ),
+    no_telemetry: bool = typer.Option(
+        False,
+        '--no-telemetry',
+        help='Disable anonymous usage telemetry for this invocation',
+    ),
 ) -> None:
     ctx.ensure_object(dict)
     ctx.obj['db'] = str(db.expanduser().resolve())
+    ctx.obj['no_telemetry'] = no_telemetry
+
+    def _flush_telemetry() -> None:
+        from aingram.config import load_merged_config
+        from aingram.telemetry import maybe_send_cli_telemetry
+
+        cfg = load_merged_config()
+        enabled = cfg.telemetry_enabled and not no_telemetry
+        maybe_send_cli_telemetry(command=ctx.invoked_subcommand, enabled=enabled)
+
+    ctx.call_on_close(_flush_telemetry)
 
 
 @app.command()

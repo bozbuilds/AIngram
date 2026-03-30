@@ -14,6 +14,7 @@ def test_defaults():
     c = AIngramConfig()
     assert c.embedding_dim == 768
     assert c.worker_enabled is True
+    assert c.telemetry_enabled is True
     assert c.models_dir is not None
     assert c.llm_url == 'http://localhost:11434'
     assert c.llm_model == 'mistral'
@@ -38,6 +39,12 @@ def test_env_embedding_dim(monkeypatch):
     monkeypatch.setenv('AINGRAM_EMBEDDING_DIM', '256')
     c = load_merged_config(config_file=None, env=os_environ_only())
     assert c.embedding_dim == 256
+
+
+def test_telemetry_disabled_via_env(monkeypatch):
+    monkeypatch.setenv('AINGRAM_TELEMETRY_ENABLED', 'false')
+    c = load_merged_config(config_file=None, env=os_environ_only())
+    assert c.telemetry_enabled is False
 
 
 def test_file_overrides_defaults(tmp_path, monkeypatch):

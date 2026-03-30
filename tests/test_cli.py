@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
@@ -10,6 +11,11 @@ from typer.testing import CliRunner
 @pytest.fixture
 def runner() -> CliRunner:
     return CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def disable_cli_telemetry(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv('AINGRAM_TELEMETRY_ENABLED', 'false')
 
 
 def test_cli_help(runner: CliRunner) -> None:

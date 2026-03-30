@@ -64,6 +64,7 @@ Precedence (highest first): constructor kwargs → environment variables → `~/
 | `AINGRAM_EXTRACTOR_MODE` | `none`, `local`, or `sonnet` |
 | `AINGRAM_EXTRACTOR_MODEL` | Extractor model id |
 | `AINGRAM_ONNX_PROVIDER` | `cpu`, `cuda`, `npu`, or omit for auto |
+| `AINGRAM_TELEMETRY_ENABLED` | `true` / `false` — anonymous CLI usage telemetry |
 
 Example `~/.aingram/config.toml`:
 
@@ -74,9 +75,24 @@ models_dir = "C:/Users/me/.aingram/models"
 llm_url = "http://localhost:11434"
 llm_model = "mistral"
 extractor_mode = "none"
+telemetry_enabled = true
 ```
 
 Use `AIngramConfig` and `load_merged_config()` for the same rules in application code.
+
+## Privacy and anonymous telemetry
+
+**CLI only:** the `aingram` command-line tool may send events. Using the Python API or MCP does not use this channel.
+
+The CLI may send **anonymous usage events** by default: a random install id (`~/.aingram/telemetry_id`), the **name of the top-level command** you ran (e.g. `add`, `status`), and the package version. **No memory text, queries, paths, or secrets** are included. Events are sent over HTTPS to `https://api.aingram.dev/v1/telemetry`.
+
+**Opt out** (any one):
+
+- Add `--no-telemetry` to a single invocation, e.g. `aingram --no-telemetry --db ./agent_memory.db status`.
+- Set `telemetry_enabled = false` in `~/.aingram/config.toml`.
+- Set `AINGRAM_TELEMETRY_ENABLED=false` in the environment.
+
+This is separate from any future **opt-in** “contribute training examples” feature, which would involve content you deliberately choose to share.
 
 ## Consolidation and LLM
 
