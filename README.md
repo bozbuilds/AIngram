@@ -17,10 +17,16 @@ Optional extras:
 | `aingram[mcp]` | MCP server (`FastMCP`) |
 | `aingram[api]` | Anthropic API (Sonnet extractor) |
 | `aingram[all]` | `mcp`, `extraction`, `llm`, and `cli`-related deps |
+| `aingram[gpu]` | CUDA 12 pip wheels (`cuFFT`, cuBLAS, cuDNN, runtime) ONNX Runtime needs on Windows/Linux |
 
 The `aingram` CLI is available once the package is installed (Typer is a core dependency).
 
-**CUDA / GPU (embeddings):** The default package uses the CPU build of ONNX Runtime. Do not install `onnxruntime` and `onnxruntime-gpu` together. To use GPU: `pip uninstall -y onnxruntime onnxruntime-gpu` then `pip install onnxruntime-gpu`. See [ONNX Runtime GPU install](https://onnxruntime.ai/docs/install/#install-gpu) for CUDA/cuDNN expectations.
+**CUDA / GPU (embeddings):** The default package uses the CPU build of ONNX Runtime. Do not install `onnxruntime` and `onnxruntime-gpu` together. Typical GPU setup:
+
+1. `pip uninstall -y onnxruntime onnxruntime-gpu` then `pip install onnxruntime-gpu`
+2. `pip install "aingram[gpu]"` — includes **`nvidia-cufft-cu12`** (ORT’s CUDA EP often fails with `cufft64_11.dll` / cuFFT missing if you only installed cuBLAS/cuDNN/runtime)
+
+Set `AINGRAM_ONNX_PROVIDER=cuda` (or `[onnx_provider]` in `config.toml`) if you want to force CUDA instead of auto. See [ONNX Runtime GPU install](https://onnxruntime.ai/docs/install/#install-gpu) for full CUDA/cuDNN notes.
 
 ## Quick start (Python)
 
