@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIngram - Local-first agent memory</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <header class="navbar">
+        <div class="logo">AIngram</div>
+        <nav class="nav-links">
+            <a href="#features">Lite</a>
+            <a href="#pro">Pro</a>
+            <a href="https://github.com/bozbuilds/AIngram" class="btn btn-outline">GitHub</a>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="hero-content">
+                <div class="badge">Open Source Edition Available</div>
+                <h1>Give your AI Agent a Brain. <span class="text-gradient">Locally.</span></h1>
+                <p class="subtitle">AIngram is a lightweight memory layer for AI agents featuring hybrid vector + FTS5 search and MCP support. No cloud required.</p>
+                <div class="cta-group">
+                    <div class="terminal-box">
+                        <span class="prompt">$</span>
+                        <code class="command">pip install aingram</code>
+                        <button class="copy-btn" id="copyBtn" aria-label="Copy command">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="hero-code">
+                 <div class="window-header">
+                     <span class="dot red"></span>
+                     <span class="dot yellow"></span>
+                     <span class="dot green"></span>
+                     <span class="filename">brain.py</span>
+                 </div>
+                 <pre><code><span class="keyword">from</span> aingram <span class="keyword">import</span> MemoryStore
+
+<span class="keyword">with</span> MemoryStore(<span class="string">'./agent.db'</span>) <span class="keyword">as</span> mem:
+    mem.remember(<span class="string">'User prefers concise answers'</span>)
+    
+    <span class="keyword">for</span> r <span class="keyword">in</span> mem.recall(<span class="string">'What does the user prefer?'</span>):
+        <span class="builtin">print</span>(r.score, r.entry.content)</code></pre>
+            </div>
+        </section>
+
+        <section class="features" id="features">
+            <h2 class="section-title">Everything you need. Nothing you don't.</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">📁</div>
+                    <h3>One SQLite File</h3>
+                    <p>Zero cloud dependencies. Everything is stored in a single SQLite database. Portable and local-first.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔍</div>
+                    <h3>Hybrid Search</h3>
+                    <p>Combines vector embeddings with FTS5 text search for highly accurate, state-of-the-art recall.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🕸️</div>
+                    <h3>Knowledge Graphs</h3>
+                    <p>Built-in entity and relationship extraction. Connect the dots across disparate memories automatically.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🚀</div>
+                    <h3>MCP Ready</h3>
+                    <p>Includes an optional MCP server out of the box (FastMCP). Plug into your whole ecosystem seamlessly.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="pro-section" id="pro">
+            <div class="pro-container">
+                <div class="pro-header">
+                    <h2>AIngram <span class="pro-badge">Pro</span></h2>
+                    <p>Scaling to millions of memories with enterprise features.</p>
+                </div>
+                
+                <div class="pro-features-list">
+                    <div class="pro-feature">
+                        <h4>The Pro Memory Cache</h4>
+                        <p>Your vector database gets slower as it gets larger. That's a law of physics, not a software bug. Every query touches more data. The only way to break this is to keep the hot memories somewhere that doesn't scale linearly with the total database size. That's what the Pro memory cache does.</p>
+                    </div>
+                    <div class="pro-feature">
+                        <h4>CRDTs for Agent Memory</h4>
+                        <p>Multi-agent systems have a coordination problem that single-agent systems don't: when Agent A and Agent B both update the same memory, whose version wins? The naive answer is 'last write wins.' The correct answer is 'both versions are preserved, and you can query the merge history.' That's what distributed systems people have been doing with CRDTs for a decade. We applied it to agent memory.</p>
+                    </div>
+                    <div class="pro-feature">
+                        <h4>Asymmetric Consolidation</h4>
+                        <p>Human memory doesn't store everything equally. Novel information that violates expectations is retained longer. Repeated patterns that confirm what you already know fade. There's a reason you remember the one time your code worked in a surprising way better than the hundred times it worked as expected. We built this asymmetry into the Pro consolidation system: memories that contain high-surprise findings are scheduled for reinforcement more aggressively than memories that are predictable.</p>
+                    </div>
+                    <div class="pro-feature">
+                        <h4>Learned Search Index</h4>
+                        <p>A 768-dimensional float32 vector takes 3KB of storage and 3KB of memory bandwidth on every comparison. At 1 million memories, that's 3GB for the index alone, and every search scans all of it. The Pro search index learns which parts of the database are relevant to which query types. The result is 32x storage reduction on the vector index, and ~50x faster search at 1 million vectors.</p>
+                    </div>
+                    <div class="pro-feature">
+                        <h4>Causal Graph Explicitly Tracks Causality</h4>
+                        <p>Vector search finds memories that are semantically similar to your query. That's useful. But similarity isn't causality. "The model improved" and "we reduced the learning rate" might appear in the same memory, but the causal direction matters: did reducing the learning rate cause the improvement, or did both happen to coincide? The Pro causal graph tracks this distinction explicitly. After 50 experiments, your agent doesn't just know what happened — it has a model of why.</p>
+                    </div>
+                </div>
+
+                <div class="waitlist-card">
+                    <h3>Join the Waitlist</h3>
+                    <p>Get early access to AIngram Pro when we launch.</p>
+                    <form id="waitlistForm" class="waitlist-form">
+                        <input type="email" id="emailInput" placeholder="Enter your email address" required>
+                        <button type="submit" id="submitBtn">Join Waitlist</button>
+                    </form>
+                    <div id="formMessage" class="form-message"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-logo">AIngram</div>
+            <p>Apache-2.0 Licensed.</p>
+        </div>
+    </footer>
+    <script src="script.js"></script>
+</body>
+</html>
