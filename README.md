@@ -118,6 +118,15 @@ With `aingram[mcp]` installed, see `aingram.mcp_server.create_server` for tools 
 
 Runnable scripts using `MemoryStore.remember` / `MemoryStore.recall` live in [`examples/`](examples/). See [`examples/README.md`](examples/README.md).
 
+## Benchmarks (local)
+
+From a clone of this repo, synthetic DBs and timing scripts live under [`scripts/`](scripts/):
+
+1. `python scripts/seed_bench_db.py` — creates `benchmarks/bench_*.db`
+2. `python scripts/bench.py` — runs recall and embed vs vector-search breakdowns on those files
+
+When the embedding model is first used, **`huggingface_hub` may print a warning** that you are sending unauthenticated requests to the Hugging Face Hub. **That is expected and not a functional problem** — downloads still work locally. Optionally set a [`HF_TOKEN`](https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables) in the environment for higher rate limits if you hit throttling.
+
 ## Development
 
 ```bash
