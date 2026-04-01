@@ -17,10 +17,16 @@ Optional extras:
 | `aingram[mcp]` | MCP server (`FastMCP`) |
 | `aingram[api]` | Anthropic API (Sonnet extractor) |
 | `aingram[all]` | `mcp`, `extraction`, `llm`, and `cli`-related deps |
+| `aingram[gpu]` | CUDA 12 pip wheels (`cuFFT`, cuBLAS, cuDNN, runtime) ONNX Runtime needs on Windows/Linux |
 
 The `aingram` CLI is available once the package is installed (Typer is a core dependency).
 
-**CUDA / GPU (embeddings):** The default package uses the CPU build of ONNX Runtime. Do not install `onnxruntime` and `onnxruntime-gpu` together. To use GPU: `pip uninstall -y onnxruntime onnxruntime-gpu` then `pip install onnxruntime-gpu`. See [ONNX Runtime GPU install](https://onnxruntime.ai/docs/install/#install-gpu) for CUDA/cuDNN expectations.
+**CUDA / GPU (embeddings):** The default package uses the CPU build of ONNX Runtime. Do not install `onnxruntime` and `onnxruntime-gpu` together. Typical GPU setup:
+
+1. `pip uninstall -y onnxruntime onnxruntime-gpu` then `pip install onnxruntime-gpu`
+2. `pip install "aingram[gpu]"` — includes **`nvidia-cufft-cu12`** (ORT’s CUDA EP often fails with `cufft64_11.dll` / cuFFT missing if you only installed cuBLAS/cuDNN/runtime)
+
+Set `AINGRAM_ONNX_PROVIDER=cuda` (or `[onnx_provider]` in `config.toml`) if you want to force CUDA instead of auto. See [ONNX Runtime GPU install](https://onnxruntime.ai/docs/install/#install-gpu) for full CUDA/cuDNN notes.
 
 ## Quick start (Python)
 
@@ -111,6 +117,15 @@ With `aingram[mcp]` installed, see `aingram.mcp_server.create_server` for tools 
 ## Examples
 
 Runnable scripts using `MemoryStore.remember` / `MemoryStore.recall` live in [`examples/`](examples/). See [`examples/README.md`](examples/README.md).
+
+## Benchmarks (local)
+
+From a clone of this repo, synthetic DBs and timing scripts live under [`scripts/`](scripts/):
+
+1. `python scripts/seed_bench_db.py` — creates `benchmarks/bench_*.db`
+2. `python scripts/bench.py` — runs recall and embed vs vector-search breakdowns on those files
+
+When the embedding model is first used, **`huggingface_hub` may print a warning** that you are sending unauthenticated requests to the Hugging Face Hub. **That is expected and not a functional problem** — downloads still work locally. Optionally set a [`HF_TOKEN`](https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables) in the environment for higher rate limits if you hit throttling.
 
 ## Development
 

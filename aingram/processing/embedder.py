@@ -18,6 +18,54 @@ HUGGINGFACE_REPO = 'nomic-ai/nomic-embed-text-v1.5'
 DEFAULT_DIM = 768
 MAX_TOKENS = 8192
 
+# Prefer loading order for NVIDIA pip wheels (cuDNN/cuFFT need runtime visible early on Windows).
+_NVIDIA_BIN_PRIORITY = (
+    'cuda_runtime',
+    'cublas',
+    'cufft',
+    'curand',
+    'cusolver',
+    'cusparse',
+    'cudnn',
+    'nvjitlink',
+    'cufile',
+)
+
+
+def _prepend_nvidia_wheel_bins_to_path() -> None:
+    """Put all ``site-packages/nvidia/*/bin`` dirs on PATH so ORT can load cuFFT/cuDNN on Windows."""
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        return
+    site_pkgs = Path(ort.__file__).resolve().parent.parent
+    nvidia_root = site_pkgs / 'nvidia'
+    if not nvidia_root.is_dir():
+        return
+    seen: set[str] = set()
+    bins: list[str] = []
+    for name in _NVIDIA_BIN_PRIORITY:
+        b = nvidia_root / name / 'bin'
+        if b.is_dir():
+            r = str(b.resolve())
+            if r not in seen:
+                seen.add(r)
+                bins.append(r)
+    try:
+        for child in sorted(nvidia_root.iterdir()):
+            if not child.is_dir():
+                continue
+            b = child / 'bin'
+            if b.is_dir():
+                r = str(b.resolve())
+                if r not in seen:
+                    seen.add(r)
+                    bins.append(r)
+    except OSError:
+        pass
+    if bins:
+        os.environ['PATH'] = os.pathsep.join(bins) + os.pathsep + os.environ.get('PATH', '')
+
 
 def _select_providers(available: set[str], preferred_provider: str | None = None) -> list[str]:
     """Select ONNX Runtime execution providers based on preference and availability.
@@ -103,17 +151,14 @@ class NomicEmbedder:
                 if chosen:
                     session_kw['providers'] = chosen
 
-            # onnxruntime-gpu lists CUDA even when no CUDA DLLs are on PATH. preload_dlls()
-            # loads nvidia-* wheels from site-packages; only call if those dirs exist to
-            # avoid ORT printing long "Failed to load ..." traces when CUDA is not installed.
+            # onnxruntime-gpu lists CUDA even when cuFFT/cuDNN DLLs are not on PATH. Prepend
+            # every nvidia-* wheel bin dir, then ORT's preload_dlls() when available.
             if cuda_listed:
-                site_pkgs = Path(ort.__file__).resolve().parent.parent
-                nvidia_bins = site_pkgs / 'nvidia' / 'cublas' / 'bin'
-                if nvidia_bins.is_dir():
-                    preload = getattr(ort, 'preload_dlls', None)
-                    if callable(preload):
-                        with contextlib.suppress(Exception):
-                            preload()
+                _prepend_nvidia_wheel_bins_to_path()
+                preload = getattr(ort, 'preload_dlls', None)
+                if callable(preload):
+                    with contextlib.suppress(Exception):
+                        preload()
 
             if os.environ.get('ORT_LOG_SEVERITY_LEVEL') is None and os.environ.get(
                 'AINGRAM_ORT_VERBOSE', ''
@@ -198,3 +243,8 @@ class NomicEmbedder:
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         return [self.embed(text) for text in texts]
+
+    def active_execution_providers(self) -> list[str]:
+        self._ensure_loaded()
+        assert self._session is not None
+        return list(self._session.get_providers())

@@ -29,6 +29,14 @@ dependencies = [
 aingram = "aingram.cli:main_entry"
 
 [project.optional-dependencies]
+# NVIDIA CUDA 12 pip wheels for ORT GPU (cuFFT is required; not pulled in by cublas/cudnn alone).
+# Use after: pip uninstall -y onnxruntime && pip install onnxruntime-gpu
+gpu = [
+    "nvidia-cuda-runtime-cu12>=12.0.140",
+    "nvidia-cublas-cu12>=12.0.0",
+    "nvidia-cudnn-cu12>=9.0.0",
+    "nvidia-cufft-cu12>=11.0.0",
+]
 api = ["anthropic>=0.40.0"]
 extraction = ["gliner>=0.2.0"]
 llm = ["httpx>=0.27.0"]
