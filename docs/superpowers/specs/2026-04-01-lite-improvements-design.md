@@ -10,7 +10,9 @@ Hybrid recall runs FTS5 and vector search independently, then merges via RRF. Ve
 
 ### Design
 
-Use FTS5 results as a candidate set for vector search. Add a new engine primitive that constrains KNN to a subset of entry IDs.
+Use FTS5 results as a candidate set for vector search. Fetch embeddings for the FTS5 candidates and compute cosine similarity in Python, bypassing sqlite-vec's KNN for the filtered path.
+
+**Note on sqlite-vec limitation:** The `vec0` virtual table does not support combining `entry_id IN (...)` with the KNN `MATCH` operator. True SQL-level pre-filtering is not possible. Instead, the filtered path fetches candidate embedding blobs directly from `vec_entries` by ID and scores them with cosine similarity in Python. This is still fast because the candidate set is small (typically 50-500 entries).
 
 **New method in `engine.py`:**
 
@@ -18,20 +20,23 @@ Use FTS5 results as a candidate set for vector search. Add a new engine primitiv
 def search_vectors_filtered(
     self, query_embedding: list[float], candidate_ids: list[str], *, limit: int = 10
 ) -> list[tuple[str, float]]:
-    """KNN search constrained to candidate_ids only."""
+    """Cosine similarity search over a pre-filtered candidate set.
+    Returns empty list immediately if candidate_ids is empty."""
 ```
 
-Queries `vec_entries` with an `entry_id IN (...)` constraint so sqlite-vec only scores the filtered set.
+Fetches embedding blobs for `candidate_ids` from `vec_entries`, unpacks to float32, computes cosine similarity against `query_embedding`, returns top `limit` results sorted by similarity. Returns `[]` immediately if `candidate_ids` is empty.
 
 **Modified `recall()` pipeline in `store.py`:**
 
 ```
-query -> FTS5 -> N candidates
-  if N >= threshold:  filtered vector search (N candidates) -> RRF merge
-  if N < threshold:   full vector scan -> RRF merge
+query -> FTS5 (limit = max(limit * 3, threshold * 2)) -> N candidates
+  if N >= threshold:  filtered vector search (N candidates, Python cosine) -> RRF merge
+  if N < threshold:   full vector scan (sqlite-vec KNN) -> RRF merge
 ```
 
-Adaptive fallback: when FTS5 returns fewer than `fts_prefilter_threshold` candidates (default 50), the query is purely semantic and FTS5 has no useful signal. Fall back to full scan. Never runs both.
+Adaptive fallback: when FTS5 returns fewer than `fts_prefilter_threshold` candidates (default 50), the query is purely semantic and FTS5 has no useful signal. Fall back to full KNN scan. Never runs both.
+
+The FTS candidate limit is set to `max(limit * 3, fts_prefilter_threshold * 2)` to ensure enough candidates are fetched for the pre-filter to activate at default settings.
 
 **Config:**
 
@@ -59,7 +64,7 @@ Agent memory is invisible during execution. Users can't see what their agent is 
 
 ### Design
 
-A live-tail CLI command that polls for new entries every 1 second and prints them with colorized output.
+A live-tail CLI command that polls for new entries every 1 second and prints them with colorized output. New CLI commands use Typer (`@app.command()` with `typer.Option`), consistent with existing commands like `compact`.
 
 **New module `aingram/watch.py`:**
 
@@ -69,8 +74,8 @@ def watch_loop(db_path: str, *, json_output: bool = False) -> None:
 ```
 
 - Opens a read-only SQLite connection
-- Tracks high-water mark via `last_seen_created_at`
-- Polls `SELECT * FROM memory_entries WHERE created_at > ? ORDER BY created_at ASC` every 1 second
+- Tracks high-water mark via `rowid` (monotonically increasing, immune to timestamp collisions)
+- Polls `SELECT * FROM memory_entries WHERE rowid > ? ORDER BY rowid ASC` every 1 second
 - Catches `KeyboardInterrupt` for clean exit
 
 **Default output format (colorized):**
@@ -80,7 +85,7 @@ def watch_loop(db_path: str, *, json_output: bool = False) -> None:
 [14:23:04] HYPOTHESIS confidence=0.74  "Warmup steps may interact with the LR effect"
 ```
 
-Entry type colors: hypothesis=blue, method=gray, result=green, lesson=gold, observation=cyan, other=white. Confidence shown as decimal, `--` if absent. Content truncated to terminal width with ellipsis.
+Entry type colors: hypothesis=blue, method=gray, result=green, lesson=gold, observation=cyan, decision=white, meta=white. All other/unknown types render in white. Confidence shown as decimal, `--` if absent. Content truncated to terminal width with ellipsis.
 
 **JSON output (`--json` flag):**
 
@@ -96,6 +101,11 @@ One JSON object per line (JSONL), pipe-friendly.
 aingram watch              # colorized live tail
 aingram watch --json       # JSONL output for piping
 ```
+
+**Edge cases:**
+
+- If the database file does not exist, print an error and exit with nonzero code.
+- If the database exists but has no entries, print a waiting message and continue polling.
 
 ### Files Changed
 
@@ -117,7 +127,7 @@ AIngram has a knowledge graph, reasoning chains with outcome tracking, entity re
 
 ### Design
 
-`aingram viz` starts a localhost HTTP server and opens a browser tab with an interactive memory explorer. Zero external dependencies -- D3.js loaded from CDN.
+`aingram viz` starts a localhost HTTP server and opens a browser tab with an interactive memory explorer. No Python dependencies beyond stdlib.
 
 **Package structure:**
 
@@ -137,8 +147,10 @@ aingram/viz/
 |----------|---------|
 | `GET /api/entities` | All entities with types, relationship edges, weights |
 | `GET /api/chains` | Chain list with entry summaries, types, timestamps |
-| `GET /api/entries/:id` | Full entry: content, confidence, surprise, hash, verification status, linked entities |
+| `GET /api/entry?id=ID` | Full entry: content, confidence, surprise, hash, verification status, linked entities. Returns 400 if `id` missing, 404 if entry not found (JSON error body). |
 | `GET /api/stats` | DB summary: entry count, entity count, chain count |
+
+The server sets `Access-Control-Allow-Origin: *` for localhost use. The SPA must be served by the built-in server, not opened as a `file://` URL.
 
 **Frontend layout:**
 
@@ -148,7 +160,7 @@ aingram/viz/
 
 **Graph view:** D3 force-directed graph. Nodes colored by entity type, edges weighted by relationship strength. Click a node to see its entries in the sidebar.
 
-**Chain timeline:** Vertical timeline per chain. Entries color-coded by type (hypothesis=blue, method=gray, result=green, lesson=gold). Click an entry to inspect in sidebar.
+**Chain timeline:** Vertical timeline per chain. Entries color-coded by type, matching the watch color scheme (hypothesis=blue, method=gray, result=green, lesson=gold, observation=cyan, decision/meta/other=white). Click an entry to inspect in sidebar.
 
 **Entry inspector (sidebar):** Full content, confidence score, surprise score, entry type, timestamp, cryptographic hash, verification status, linked entities.
 
@@ -165,13 +177,14 @@ aingram viz --no-open      # start server without opening browser
 - `aingram/viz/__init__.py` -- package init
 - `aingram/viz/server.py` -- HTTP server with API routes
 - `aingram/viz/static/index.html` -- single-page app shell
+- `aingram/viz/static/d3.min.js` -- bundled D3.js (offline support)
 - `aingram/viz/static/app.js` -- D3 rendering + API fetch logic
 - `aingram/viz/static/style.css` -- layout and color coding
 - `aingram/cli.py` -- new `viz` subcommand with `--port` and `--no-open` flags
 
 ### Dependencies
 
-None beyond stdlib. D3.js loaded from `d3js.org` CDN. Optional `aingram[viz]` extra in `pyproject.toml` as a marker for discoverability -- adds nothing to core.
+No Python dependencies beyond stdlib. D3.js is bundled as a minified file (`aingram/viz/static/d3.min.js`, ~90KB gzipped) to support offline and air-gapped environments, consistent with AIngram's local-first philosophy. Optional `aingram[viz]` extra in `pyproject.toml` as a marker for discoverability -- adds nothing to core.
 
 ### Testing
 
@@ -215,7 +228,7 @@ Each adapter wraps a `MemoryStore` instance and translates between the framework
 |-----------|-----------|-------------|
 | LangChain | `BaseChatMessageHistory` | `add_message()`, `messages` property, `clear()` |
 | CrewAI | `Memory` base class | `save()`, `search()`, `reset()` |
-| LangGraph | `BaseCheckpointSaver` | `put()`, `get()`, `list()` |
+| LangGraph | `BaseStore` (langgraph >= 0.2) | `put()`, `get()`, `search()`. Note: `BaseCheckpointSaver` is for execution state, not memory. If `BaseStore` is unavailable, implement as a tool node instead. |
 | AutoGen | `MemoryStore` protocol | `add()`, `query()`, `delete()` |
 | smolagents | `MemoryStep` pattern | `write_memory()`, `retrieve_memory()` |
 
@@ -225,7 +238,7 @@ Each adapter wraps a `MemoryStore` instance and translates between the framework
 [project.optional-dependencies]
 langchain = ["langchain-core>=0.2"]
 crewai = ["crewai>=0.40"]
-langgraph = ["langgraph>=0.1"]
+langgraph = ["langgraph>=0.2"]
 autogen = ["autogen-agentchat>=0.4"]
 smolagents = ["smolagents>=1.0"]
 ```
@@ -256,26 +269,37 @@ A 768-dim float32 embedding is 3KB. At 100K entries the vector index is ~300MB. 
 
 ### Design
 
-Per-vector min/max scaling to int8. The int8 table becomes the source of truth; the existing `vec0` float32 table becomes a rebuildable cache so sqlite-vec KNN continues to work natively.
+Per-vector min/max scaling to uint8. The int8 table becomes the source of truth; the existing `vec0` float32 table becomes a rebuildable cache so sqlite-vec KNN continues to work natively.
 
 **New table `vec_entries_int8`:**
 
 ```sql
 CREATE TABLE vec_entries_int8 (
     entry_id TEXT PRIMARY KEY,
-    quantized BLOB NOT NULL,   -- int8 bytes
-    scale REAL NOT NULL,        -- (max - min) / 255
+    quantized BLOB NOT NULL,   -- uint8 bytes [0, 255]
+    scale REAL NOT NULL,        -- (max_val - min_val) / 255
     min_val REAL NOT NULL       -- original minimum value
 )
 ```
 
-**Quantize operation:**
+**Quantize operation (encode):**
 
-For each vector: compute min/max, scale to [-128, 127], store int8 blob + scale + min_val. One-way destructive operation matching the `compact()` pattern.
+For each vector: compute min/max, then for each float value:
+- `scale = (max_val - min_val) / 255`
+- `uint8_val = round((float_val - min_val) / scale)`
+- **Zero-range edge case:** If `max_val == min_val`, set `scale = 0` and all uint8 values to 0. Dequantize recovers correctly: `0 * 0 + min_val = min_val`.
 
-**Dequantize (rebuild):**
+Store uint8 blob + scale + min_val. One-way destructive operation matching the `compact()` pattern.
 
-Reconstruct float32 from int8: `float_val = int8_val * scale + min_val`. Insert into `vec0` table. Rebuild is automatic after quantize and on any future DB open when the int8 table has data but `vec0` is stale.
+Example: a 4-dim vector `[0.1, 0.5, 0.3, 0.9]` with min=0.1, max=0.9 gives scale=0.003137, uint8=[0, 128, 64, 255]. Dequantize: [0.1, 0.501, 0.301, 0.9].
+
+**Method signature:** `def quantize(self, *, confirm: bool = False) -> None` with the same `ValueError` guard as `compact()`.
+
+**Dequantize (rebuild/decode):**
+
+Reconstruct float32 from uint8: `float_val = uint8_val * scale + min_val`. Insert into `vec0` table. Rebuild is automatic after quantize and on any future DB open when the int8 table has data but `vec0` is stale.
+
+**Staleness detection:** A `quantized_version` counter in `db_metadata` increments on each quantize or rebuild. A matching `vec_cache_version` tracks the `vec0` table state. When `quantized_version > vec_cache_version`, the cache is stale and triggers rebuild on open.
 
 **New entries after quantize:**
 
