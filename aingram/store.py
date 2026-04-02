@@ -167,6 +167,9 @@ class MemoryStore:
             surprise=None,
         )
 
+        if self._engine.is_quantized():
+            self._engine.store_entry_int8(entry_id, embedding)
+
         self._session.advance(entry_id)
 
         try:
@@ -215,12 +218,19 @@ class MemoryStore:
 
         embedding = self._embedder.embed(query)
         candidate_limit = limit * 3
+        threshold = self._config.fts_prefilter_threshold
+        fts_candidate_limit = max(candidate_limit, threshold * 2)
 
-        vec_results = self._engine.search_vectors(embedding, limit=candidate_limit)
-        vec_ids = [eid for eid, _ in vec_results]
-
-        fts_results = self._engine.search_fts(query, limit=candidate_limit)
+        fts_results = self._engine.search_fts(query, limit=fts_candidate_limit)
         fts_ids = [eid for eid, _ in fts_results]
+
+        if len(fts_ids) >= threshold:
+            vec_results = self._engine.search_vectors_filtered(
+                embedding, fts_ids, limit=candidate_limit
+            )
+        else:
+            vec_results = self._engine.search_vectors(embedding, limit=candidate_limit)
+        vec_ids = [eid for eid, _ in vec_results]
 
         try:
             traversal = GraphTraversal(self._engine)
@@ -472,6 +482,12 @@ class MemoryStore:
             raise ValueError(f'target_dim ({target_dim}) must be less than current dim ({old})')
         self._engine.truncate_all_embeddings_to_dim(target_dim)
         self._embedder.dim = target_dim
+
+    def quantize(self, *, confirm: bool = False) -> None:
+        """One-way quantize all stored embeddings to uint8 (4x storage reduction)."""
+        if not confirm:
+            raise ValueError('quantize() is destructive; call with confirm=True')
+        self._engine.quantize_all_embeddings()
 
     def export_json(self, path: str | Path, *, agent_id: str | None = None) -> None:
         """Export sessions, chains, entries, graph, and vectors to JSON."""

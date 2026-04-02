@@ -159,6 +159,54 @@ def compact(
         mem.close()
 
 
+@app.command()
+def watch(
+    ctx: typer.Context,
+    json_output: bool = typer.Option(False, '--json', help='Output as JSONL'),
+) -> None:
+    """Live tail of new memory entries."""
+    from aingram.watch import watch_loop
+
+    watch_loop(ctx.obj['db'], json_output=json_output)
+
+
+@app.command()
+def viz(
+    ctx: typer.Context,
+    port: int = typer.Option(8420, '--port', help='Server port'),
+    no_open: bool = typer.Option(False, '--no-open', help='Do not open browser'),
+) -> None:
+    """Start local visualization server."""
+    from aingram.viz.server import run_viz
+
+    run_viz(ctx.obj['db'], port=port, open_browser=not no_open)
+
+
+@app.command()
+def quantize(
+    ctx: typer.Context,
+    yes: bool = typer.Option(False, '--yes', help='Confirm one-way uint8 quantization'),
+    rebuild: bool = typer.Option(False, '--rebuild', help='Rebuild float32 cache from int8 data'),
+) -> None:
+    """Quantize embeddings to uint8 for ~4x storage reduction."""
+    from aingram import MemoryStore
+
+    mem = MemoryStore(ctx.obj['db'])
+    try:
+        if rebuild:
+            count = mem._engine.rebuild_vec_from_int8()
+            typer.echo(f'Rebuilt {count} float32 embeddings from int8 source.')
+        else:
+            try:
+                mem.quantize(confirm=yes)
+            except ValueError as e:
+                typer.echo(str(e), err=True)
+                raise typer.Exit(code=1) from e
+            typer.echo('Embeddings quantized to uint8.')
+    finally:
+        mem.close()
+
+
 agent_app = typer.Typer(help='Agent token management', no_args_is_help=True)
 app.add_typer(agent_app, name='agent')
 

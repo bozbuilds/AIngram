@@ -982,3 +982,35 @@ class TestVectorSearchEdgeCases:
         results = engine_with_session.search_vectors(emb_query, limit=2)
         assert len(results) == 2
         assert results[0][0] == 'e1'  # closer to query
+
+
+class TestFilteredVectorSearch:
+    def test_returns_subset(self, engine_with_session):
+        engine = engine_with_session
+        dim = engine.get_embedding_dim()
+        for i, eid in enumerate(['e1', 'e2', 'e3']):
+            vec = [math.sin(i + j) for j in range(dim)]
+            engine.store_entry(
+                entry_id=eid,
+                content_hash=f'h-{eid}',
+                entry_type='observation',
+                content=f'{{"text":"entry {eid}"}}',
+                session_id='s1',
+                sequence_num=i + 1,
+                prev_entry_id=None if i == 0 else f'e{i}',
+                signature='sig',
+                created_at='2026-01-01T00:00:00+00:00',
+                embedding=vec,
+            )
+        query_vec = [math.sin(j) for j in range(dim)]
+        results = engine.search_vectors_filtered(query_vec, ['e1', 'e3'], limit=10)
+        result_ids = [eid for eid, _ in results]
+        assert 'e2' not in result_ids
+        assert len(results) <= 2
+        if len(results) == 2:
+            assert results[0][1] <= results[1][1]
+
+    def test_empty_candidates(self, engine_with_session):
+        dim = engine_with_session.get_embedding_dim()
+        results = engine_with_session.search_vectors_filtered([0.0] * dim, [], limit=10)
+        assert results == []

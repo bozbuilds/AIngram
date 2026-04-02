@@ -44,6 +44,7 @@ Thumbs.db
 .aingram/
 .ruff_cache/
 docs/
+landing_page/
 
 # Model weights — never commit
 *.pt

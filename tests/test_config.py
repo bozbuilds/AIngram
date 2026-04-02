@@ -47,6 +47,11 @@ def test_telemetry_disabled_via_env(monkeypatch):
     assert c.telemetry_enabled is False
 
 
+def test_fts_prefilter_threshold_default():
+    c = AIngramConfig()
+    assert c.fts_prefilter_threshold == 50
+
+
 def test_file_overrides_defaults(tmp_path, monkeypatch):
     monkeypatch.delenv('AINGRAM_MODELS_DIR', raising=False)
     models_path = tmp_path / 'my-models'
