@@ -136,7 +136,10 @@ class VizHandler(SimpleHTTPRequestHandler):
             'signature': entry.signature,
             'verified': None,
             'reasoning_chain_id': entry.reasoning_chain_id,
-            'entities': [{'id': e.entity_id, 'name': e.name, 'type': e.entity_type} for e in mentions],
+            'entities': [
+                {'id': e.entity_id, 'name': e.name, 'type': e.entity_type}
+                for e in mentions
+            ],
         }
 
     def log_message(self, format, *args):
