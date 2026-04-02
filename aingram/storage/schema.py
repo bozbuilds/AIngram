@@ -384,10 +384,10 @@ def apply_schema(
             "INSERT INTO db_metadata (key, value, updated_at) VALUES ('embedding_dim', ?, ?)",
             (str(vec_embedding_dim), now),
         )
-    from aingram.processing.qjl import SEED as _qjl_seed
+    from aingram.processing.qjl import SEED
 
     conn.execute(
         "INSERT OR IGNORE INTO db_metadata (key, value, updated_at) VALUES ('qjl_seed', ?, ?)",
-        (str(_qjl_seed), now),
+        (str(SEED), now),
     )
     conn.commit()

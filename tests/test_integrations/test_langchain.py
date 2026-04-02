@@ -1,4 +1,12 @@
+import importlib.util
 from unittest.mock import MagicMock, patch
+
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    importlib.util.find_spec('langchain_core') is None,
+    reason='needs langchain-core (pip install -e ".[langchain]" or ".[dev]")',
+)
 
 
 def test_langchain_adapter_add_message(tmp_path):

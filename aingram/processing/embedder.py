@@ -33,7 +33,7 @@ _NVIDIA_BIN_PRIORITY = (
 
 
 def _prepend_nvidia_wheel_bins_to_path() -> None:
-    """Put all ``site-packages/nvidia/*/bin`` dirs on PATH so ORT can load cuFFT/cuDNN on Windows."""
+    """Prepend NVIDIA wheel ``bin`` dirs to PATH for ORT GPU providers on Windows."""
     try:
         import onnxruntime as ort
     except ImportError:
