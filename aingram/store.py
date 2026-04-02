@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import os
+import struct
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -92,9 +93,25 @@ class MemoryStore:
 
                 self._extractor = SonnetExtractor(api_key=os.environ.get('ANTHROPIC_API_KEY'))
 
+        self._qjl_projection = None
+
     def set_extractor(self, extractor) -> None:
         """Attach an extractor for type inference (optional)."""
         self._extractor = extractor
+
+    def _get_qjl_projection(self):
+        """Lazy-load and cache the QJL projection matrix (seed from db_metadata)."""
+        if self._qjl_projection is None:
+            from aingram.processing.qjl import NUM_PROJECTIONS, SEED, create_projection
+
+            dim = self._engine.get_embedding_dim()
+            with self._engine._lock:
+                row = self._engine._conn.execute(
+                    "SELECT value FROM db_metadata WHERE key = 'qjl_seed'"
+                ).fetchone()
+            seed = int(row[0]) if row else SEED
+            self._qjl_projection = create_projection(dim, NUM_PROJECTIONS, seed)
+        return self._qjl_projection
 
     def remember(
         self,
@@ -147,6 +164,10 @@ class MemoryStore:
         signature = self._session.sign(entry_id)
         embedding = self._embedder.embed(embed_text)
 
+        from aingram.processing.qjl import encode
+
+        qjl_bits = encode(embedding, self._get_qjl_projection())[0]
+
         canonical_str = content_data.decode('utf-8')
         self._engine.store_entry(
             entry_id=entry_id,
@@ -165,10 +186,8 @@ class MemoryStore:
             metadata=metadata,
             confidence=confidence,
             surprise=None,
+            qjl_bits=qjl_bits,
         )
-
-        if self._engine.is_quantized():
-            self._engine.store_entry_int8(entry_id, embedding)
 
         self._session.advance(entry_id)
 
@@ -224,7 +243,21 @@ class MemoryStore:
         fts_results = self._engine.search_fts(query, limit=fts_candidate_limit)
         fts_ids = [eid for eid, _ in fts_results]
 
-        if len(fts_ids) >= threshold:
+        entry_count = self._engine.get_entry_count()
+        if entry_count >= 25_000:
+            from aingram.processing.qjl import OVERSAMPLING, encode
+
+            query_bits = encode(embedding, self._get_qjl_projection())[0]
+            coarse_limit = candidate_limit * OVERSAMPLING
+            coarse_results = self._engine.search_qjl_coarse(query_bits, limit=coarse_limit)
+            coarse_ids = [eid for eid, _ in coarse_results]
+            if coarse_ids:
+                vec_results = self._engine.rerank_by_vector(
+                    embedding, coarse_ids, limit=candidate_limit
+                )
+            else:
+                vec_results = self._engine.search_vectors(embedding, limit=candidate_limit)
+        elif len(fts_ids) >= threshold:
             vec_results = self._engine.search_vectors_filtered(
                 embedding, fts_ids, limit=candidate_limit
             )
@@ -483,11 +516,30 @@ class MemoryStore:
         self._engine.truncate_all_embeddings_to_dim(target_dim)
         self._embedder.dim = target_dim
 
-    def quantize(self, *, confirm: bool = False) -> None:
-        """One-way quantize all stored embeddings to uint8 (4x storage reduction)."""
-        if not confirm:
-            raise ValueError('quantize() is destructive; call with confirm=True')
-        self._engine.quantize_all_embeddings()
+        self._qjl_projection = None
+        projection = self._get_qjl_projection()
+
+        from aingram.processing.qjl import NUM_PROJECTIONS, encode_batch
+        from aingram.storage.schema import vec_entries_qjl_ddl
+
+        with self._engine._lock:
+            self._engine._conn.execute('DROP TABLE IF EXISTS vec_entries_qjl')
+            self._engine._conn.execute(vec_entries_qjl_ddl(NUM_PROJECTIONS))
+            rows = self._engine._conn.execute(
+                'SELECT entry_id, embedding FROM vec_entries'
+            ).fetchall()
+            for i in range(0, len(rows), 1000):
+                chunk = rows[i : i + 1000]
+                entry_ids = [r[0] for r in chunk]
+                vectors = [list(struct.unpack(f'{target_dim}f', r[1])) for r in chunk]
+                encoded = encode_batch(vectors, projection)
+                for j, (packed, _) in enumerate(encoded):
+                    self._engine._conn.execute(
+                        'INSERT INTO vec_entries_qjl (entry_id, embedding) '
+                        'VALUES (?, vec_bit(?))',
+                        (entry_ids[j], packed),
+                    )
+            self._engine._conn.commit()
 
     def export_json(self, path: str | Path, *, agent_id: str | None = None) -> None:
         """Export sessions, chains, entries, graph, and vectors to JSON."""
@@ -649,6 +701,9 @@ class MemoryStore:
             got = eng.get_embedding_dim()
             raise DatabaseError(f'Export embedding_dim {export_dim} does not match database {got}')
 
+        projection = self._get_qjl_projection()
+        dim = eng.get_embedding_dim()
+
         with eng._lock:
             if not merge:
                 for table in (
@@ -657,6 +712,7 @@ class MemoryStore:
                     'entities',
                     'cross_references',
                     'entries_fts',
+                    'vec_entries_qjl',
                     'vec_entries',
                     'memory_entries',
                     'reasoning_chains',
@@ -791,7 +847,6 @@ class MemoryStore:
                     (m['entity_id'], m['entry_id'], m.get('confidence', 1.0)),
                 )
 
-            dim = eng.get_embedding_dim()
             for v in raw['vec_entries']:
                 blob = base64.b64decode(v['embedding_b64'])
                 if len(blob) != dim * 4:
@@ -802,6 +857,29 @@ class MemoryStore:
                     'INSERT OR REPLACE INTO vec_entries (entry_id, embedding) VALUES (?, ?)',
                     (v['entry_id'], blob),
                 )
+
+            from aingram.processing.qjl import encode_batch
+
+            imported_ids = [v['entry_id'] for v in raw['vec_entries']]
+            if imported_ids:
+                from aingram.storage.engine import _SQLITE_VAR_LIMIT
+
+                for i in range(0, len(imported_ids), _SQLITE_VAR_LIMIT):
+                    chunk_ids = imported_ids[i : i + _SQLITE_VAR_LIMIT]
+                    placeholders = ','.join('?' * len(chunk_ids))
+                    vec_rows = eng._conn.execute(
+                        f'SELECT entry_id, embedding FROM vec_entries '
+                        f'WHERE entry_id IN ({placeholders})',
+                        chunk_ids,
+                    ).fetchall()
+                    vectors = [list(struct.unpack(f'{dim}f', r[1])) for r in vec_rows]
+                    encoded = encode_batch(vectors, projection)
+                    for j, (packed, _norm) in enumerate(encoded):
+                        eng._conn.execute(
+                            'INSERT OR REPLACE INTO vec_entries_qjl (entry_id, embedding) '
+                            'VALUES (?, vec_bit(?))',
+                            (vec_rows[j][0], packed),
+                        )
 
             eng._conn.commit()
 

@@ -211,3 +211,73 @@ def test_migration_chain_is_verifiable(tmp_path):
     assert result.valid is True
     assert result.entries_checked == 5
     mem.close()
+
+
+def test_migrate_v8_to_v9_drops_int8_creates_qjl(tmp_path):
+    """v8→v9: drop vec_entries_int8, create vec_entries_qjl, backfill QJL bits."""
+    from aingram.storage.schema import SCHEMA_VERSION, apply_schema
+
+    db = tmp_path / 'test.db'
+    conn = sqlite3.connect(str(db))
+    conn.enable_load_extension(True)
+    sqlite_vec.load(conn)
+    conn.enable_load_extension(False)
+
+    apply_schema(conn, enable_vec=True, vec_embedding_dim=16)
+
+    for i in range(3):
+        vec = [float(i * 0.1 + j * 0.01) for j in range(16)]
+        blob = struct.pack(f'{len(vec)}f', *vec)
+        conn.execute(
+            'INSERT INTO vec_entries (entry_id, embedding) VALUES (?, ?)',
+            (f'e{i}', blob),
+        )
+
+    conn.execute(
+        'CREATE TABLE IF NOT EXISTS vec_entries_int8 ('
+        '    entry_id TEXT PRIMARY KEY,'
+        '    quantized BLOB NOT NULL,'
+        '    scale REAL NOT NULL,'
+        '    min_val REAL NOT NULL'
+        ')'
+    )
+    conn.execute(
+        'INSERT OR REPLACE INTO vec_entries_int8 (entry_id, quantized, scale, min_val) '
+        'VALUES (?, ?, ?, ?)',
+        ('e0', b'\x00' * 16, 1.0, 0.0),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO db_metadata (key, value, updated_at) "
+        "VALUES ('quantized_version', '1', '2026-01-01')"
+    )
+    conn.execute("UPDATE db_metadata SET value = '8' WHERE key = 'schema_version'")
+    conn.commit()
+
+    apply_schema(conn, enable_vec=True, vec_embedding_dim=16)
+
+    version = conn.execute(
+        "SELECT value FROM db_metadata WHERE key = 'schema_version'"
+    ).fetchone()[0]
+    assert version == str(SCHEMA_VERSION)
+
+    tables = [
+        r[0]
+        for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    ]
+    assert 'vec_entries_int8' not in tables
+
+    qjl_count = conn.execute('SELECT COUNT(*) FROM vec_entries_qjl').fetchone()[0]
+    assert qjl_count == 3
+
+    seed_row = conn.execute(
+        "SELECT value FROM db_metadata WHERE key = 'qjl_seed'"
+    ).fetchone()
+    assert seed_row is not None
+    assert seed_row[0] == '42'
+
+    qv = conn.execute(
+        "SELECT value FROM db_metadata WHERE key = 'quantized_version'"
+    ).fetchone()
+    assert qv is None
+
+    conn.close()

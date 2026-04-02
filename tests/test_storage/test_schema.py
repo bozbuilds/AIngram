@@ -38,8 +38,8 @@ class TestSchemaLite:
         assert 'causal_nodes' not in tables
         conn.close()
 
-    def test_schema_version_is_8(self):
-        assert SCHEMA_VERSION == 8
+    def test_schema_version_is_9(self):
+        assert SCHEMA_VERSION == 9
 
 
 def test_apply_creates_core_tables(tmp_path):
@@ -91,14 +91,14 @@ def test_apply_is_idempotent(tmp_path):
     conn.close()
 
 
-def test_schema_has_vec_entries_int8_table(tmp_path):
-    conn = sqlite3.connect(str(tmp_path / 'test.db'))
-    apply_schema(conn, enable_vec=False)
+def test_schema_has_vec_entries_qjl_virtual_table(tmp_path):
+    conn = _make_conn(tmp_path)
+    apply_schema(conn, enable_vec=True)
     tables = {
         r[0]
         for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     }
-    assert 'vec_entries_int8' in tables
+    assert 'vec_entries_qjl' in tables
     conn.close()
 
 

@@ -549,33 +549,3 @@ class TestConsolidate:
             # Verify LLM was passed to MemoryMerger
             _, kwargs = mock_merger_init.call_args
             assert kwargs['llm'] is llm
-
-
-def test_quantize_requires_confirm(tmp_path, mock_embedder):
-    from aingram.store import MemoryStore
-
-    mem = MemoryStore(str(tmp_path / 'test.db'), embedder=mock_embedder)
-    with pytest.raises(ValueError, match='destructive'):
-        mem.quantize()
-    mem.close()
-
-
-def test_quantize_and_remember_dual_writes(tmp_path, mock_embedder):
-    from aingram.store import MemoryStore
-
-    mem = MemoryStore(str(tmp_path / 'test.db'), embedder=mock_embedder)
-
-    mem.remember('before quantize')
-    assert not mem._engine.is_quantized()
-
-    mem.quantize(confirm=True)
-    assert mem._engine.is_quantized()
-
-    mem.remember('after quantize')
-
-    with mem._engine._lock:
-        count = mem._engine._conn.execute(
-            'SELECT COUNT(*) FROM vec_entries_int8'
-        ).fetchone()[0]
-    assert count == 2
-    mem.close()

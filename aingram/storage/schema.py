@@ -6,8 +6,8 @@ import sqlite3
 
 logger = logging.getLogger(__name__)
 
-# Lite v8: vec_entries_int8 for optional embedding quantization.
-SCHEMA_VERSION = 8
+# Lite v9: QJL 1-bit vec_entries_qjl (replaces int8 path).
+SCHEMA_VERSION = 9
 
 AGENT_SESSIONS_TABLE = """
 CREATE TABLE IF NOT EXISTS agent_sessions (
@@ -162,15 +162,6 @@ CREATE TABLE IF NOT EXISTS db_metadata (
 )
 """
 
-VEC_ENTRIES_INT8_TABLE = """
-CREATE TABLE IF NOT EXISTS vec_entries_int8 (
-    entry_id TEXT PRIMARY KEY,
-    quantized BLOB NOT NULL,
-    scale REAL NOT NULL,
-    min_val REAL NOT NULL
-)
-"""
-
 AGENT_TOKENS_TABLE = """
 CREATE TABLE IF NOT EXISTS agent_tokens (
     agent_id    TEXT PRIMARY KEY,
@@ -252,6 +243,67 @@ def vec_entries_ddl(dim: int, *, if_not_exists: bool = True) -> str:
     )
 
 
+def vec_entries_qjl_ddl(num_projections: int, *, if_not_exists: bool = True) -> str:
+    clause = 'IF NOT EXISTS ' if if_not_exists else ''
+    return (
+        f'CREATE VIRTUAL TABLE {clause}vec_entries_qjl USING vec0(\n'
+        f'    entry_id TEXT PRIMARY KEY,\n'
+        f'    embedding bit[{num_projections}]\n'
+        f')'
+    )
+
+
+def _sqlite_table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'virtual table') AND name = ?",
+        (name,),
+    ).fetchone()
+    return row is not None
+
+
+def _migrate_v8_to_v9(conn: sqlite3.Connection, vec_embedding_dim: int) -> None:
+    """v8→v9: Replace int8 quantization with QJL 1-bit encoding."""
+    import struct
+
+    from aingram.processing.qjl import NUM_PROJECTIONS, SEED, create_projection, encode_batch
+
+    logger.info('Migrating v8→v9: replacing int8 with QJL')
+
+    conn.execute('DROP TABLE IF EXISTS vec_entries_int8')
+    conn.execute("DELETE FROM db_metadata WHERE key = 'quantized_version'")
+
+    if not _sqlite_table_exists(conn, 'vec_entries'):
+        return
+
+    conn.execute(vec_entries_qjl_ddl(NUM_PROJECTIONS))
+
+    row = conn.execute("SELECT value FROM db_metadata WHERE key='embedding_dim'").fetchone()
+    dim = int(row[0]) if row else vec_embedding_dim
+    projection = create_projection(dim, NUM_PROJECTIONS, SEED)
+    rows = conn.execute('SELECT entry_id, embedding FROM vec_entries').fetchall()
+
+    batch_size = 1000
+    for i in range(0, len(rows), batch_size):
+        chunk = rows[i : i + batch_size]
+        entry_ids = [r[0] for r in chunk]
+        vectors = [list(struct.unpack(f'{dim}f', r[1])) for r in chunk]
+        encoded = encode_batch(vectors, projection)
+        for j, (packed, _norm) in enumerate(encoded):
+            conn.execute(
+                'INSERT OR REPLACE INTO vec_entries_qjl (entry_id, embedding) '
+                'VALUES (?, vec_bit(?))',
+                (entry_ids[j], packed),
+            )
+
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC).isoformat()
+    conn.execute(
+        'INSERT OR REPLACE INTO db_metadata (key, value, updated_at) VALUES (?, ?, ?)',
+        ('qjl_seed', str(SEED), now),
+    )
+
+
 def get_schema_version(conn: sqlite3.Connection) -> int | None:
     """Read schema version from db_metadata (v3) or meta (v2 fallback)."""
     try:
@@ -295,11 +347,13 @@ def apply_schema(
     conn.execute(KNOWLEDGE_ITEMS_TABLE)
     conn.execute(TASK_QUEUE_TABLE)
     conn.execute(AGENT_TOKENS_TABLE)
-    conn.execute(VEC_ENTRIES_INT8_TABLE)
     conn.execute(ENTRIES_FTS)
 
     if enable_vec:
         conn.execute(vec_entries_ddl(vec_embedding_dim))
+        from aingram.processing.qjl import NUM_PROJECTIONS
+
+        conn.execute(vec_entries_qjl_ddl(NUM_PROJECTIONS))
 
     for idx in INDEXES:
         conn.execute(idx)
@@ -312,6 +366,9 @@ def apply_schema(
 
     if version is not None and version < 7:
         _migrate_v6_to_v7(conn)
+
+    if version is not None and version < 9:
+        _migrate_v8_to_v9(conn, vec_embedding_dim)
 
     conn.execute('CREATE INDEX IF NOT EXISTS idx_ki_due ON knowledge_items(due_at, fsrs_state)')
 
@@ -327,4 +384,10 @@ def apply_schema(
             "INSERT INTO db_metadata (key, value, updated_at) VALUES ('embedding_dim', ?, ?)",
             (str(vec_embedding_dim), now),
         )
+    from aingram.processing.qjl import SEED as _qjl_seed
+
+    conn.execute(
+        "INSERT OR IGNORE INTO db_metadata (key, value, updated_at) VALUES ('qjl_seed', ?, ?)",
+        (str(_qjl_seed), now),
+    )
     conn.commit()
