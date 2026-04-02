@@ -166,7 +166,32 @@ def migrate_v2_to_v3(db_path: str) -> int:
                     new_entry_id,
                     exc,
                 )
-    engine._conn.commit()
+
+    from aingram.processing.qjl import NUM_PROJECTIONS, SEED, create_projection, encode_batch
+
+    dim = engine.get_embedding_dim()
+    with engine._lock:
+        row = engine._conn.execute(
+            "SELECT value FROM db_metadata WHERE key = 'qjl_seed'"
+        ).fetchone()
+    seed = int(row[0]) if row else SEED
+    proj = create_projection(dim, NUM_PROJECTIONS, seed)
+    with engine._lock:
+        rows = engine._conn.execute(
+            'SELECT entry_id, embedding FROM vec_entries'
+        ).fetchall()
+        for i in range(0, len(rows), 500):
+            chunk = rows[i : i + 500]
+            entry_ids = [r[0] for r in chunk]
+            vecs = [list(struct.unpack(f'{dim}f', r[1])) for r in chunk]
+            enc = encode_batch(vecs, proj)
+            for j, (packed, _) in enumerate(enc):
+                engine._conn.execute(
+                    'INSERT OR REPLACE INTO vec_entries_qjl (entry_id, embedding) '
+                    'VALUES (?, vec_bit(?))',
+                    (entry_ids[j], packed),
+                )
+        engine._conn.commit()
 
     logger.info('Migrated %d v2 memories to v3 entries', len(entries))
     engine.close()

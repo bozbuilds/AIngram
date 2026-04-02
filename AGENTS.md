@@ -2,7 +2,7 @@
 
 ## Project Identity
 
-AIngram is a local-first, privacy-first agent memory system built on SQLite and sqlite-vec. All state lives in a single `.db` file — no cloud services, no external APIs at runtime. Core primitives are: typed `MemoryEntry` records, a knowledge graph (entities + relationships), reasoning chains, ONNX vector embeddings (Nomic MiniLM, 768-dim), and optional int8-quantized embeddings. AIngram is **not** a general-purpose vector database, not a cloud memory service, and not an ORM.
+AIngram is a local-first, privacy-first agent memory system built on SQLite and sqlite-vec. All state lives in a single `.db` file — no cloud services, no external APIs at runtime. Core primitives are: typed `MemoryEntry` records, a knowledge graph (entities + relationships), reasoning chains, ONNX vector embeddings (Nomic MiniLM, 768-dim), and QJL 1-bit auxiliary vectors for coarse search (`vec_entries_qjl`). AIngram is **not** a general-purpose vector database, not a cloud memory service, and not an ORM.
 
 ## Dev Environment
 
@@ -60,7 +60,7 @@ ruff format .             # format
 
 6. **Chunk SQL `IN` clauses to ≤ 900 items.** SQLite's default `SQLITE_LIMIT_VARIABLE_NUMBER` is 999. Use `_SQLITE_VAR_LIMIT = 900` (defined in `engine.py`) when building parameterized `IN (?)` queries.
 
-7. **Dual-write int8 embeddings in `remember()`.** When `engine.is_quantized()` is true, call `engine.store_entry_int8(entry_id, embedding)` after `store_entry()`. The int8 table (`vec_entries_int8`) is the source of truth; `vec_entries` (vec0 float32) is the rebuildable cache.
+7. **Dual-write QJL bits in `remember()`.** After computing the float32 embedding, encode QJL packed bits with the projection from metadata (`qjl_seed`) and pass `qjl_bits` into `store_entry()`. Both `vec_entries` and `vec_entries_qjl` should stay aligned for entries created through `MemoryStore`.
 
 8. **FTS pre-filter adaptive fallback.** If FTS returns ≥ `fts_prefilter_threshold` candidates, use `search_vectors_filtered()` (Python cosine similarity over the candidate set). If fewer, fall back to full KNN via `search_vectors()`. This is required because sqlite-vec's `MATCH` operator cannot be combined with `IN` filtering.
 
@@ -70,7 +70,7 @@ ruff format .             # format
 
 **FTS pre-filter architecture.** sqlite-vec's `vec0` virtual table cannot combine KNN `MATCH` with `IN` for candidate filtering. The workaround: fetch float32 blobs via a regular `IN` query on `vec_entries`, then compute cosine similarity in Python. This is the `search_vectors_filtered()` path.
 
-**int8 quantization design.** `vec_entries_int8` stores uint8-quantized embeddings as the permanent record (per-vector min/max scaling). `vec_entries` (vec0 float32) is a rebuildable cache. After `quantize()`, new entries written via `remember()` dual-write to both tables. `rebuild_vec_from_int8()` reconstructs the float32 cache at any time.
+**QJL two-pass search.** `vec_entries` holds float32 embeddings. `vec_entries_qjl` stores 1-bit QJL codes for Hamming KNN as a coarse filter when entry count ≥ 25k; `recall()` then re-ranks with `search_vectors_filtered()` on the candidate set. `compact()` truncates float rows and rebuilds the QJL table for the new dimension.
 
 **Layered configuration.** `AIngramConfig` merges in priority order: constructor kwargs (highest) → env vars → `~/.aingram/config.toml` → dataclass defaults (lowest). Library users override with kwargs; CLI users use env vars; power users configure via TOML.
 

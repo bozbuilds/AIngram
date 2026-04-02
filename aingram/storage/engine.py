@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 import sqlite_vec
 
 from aingram.exceptions import DatabaseError
-from aingram.storage.schema import SCHEMA_VERSION, apply_schema, get_schema_version
+from aingram.storage.schema import SCHEMA_VERSION, apply_schema, get_schema_version, vec_entries_ddl
 from aingram.types import (
     AgentSession,
     Entity,
@@ -755,6 +755,7 @@ class StorageEngine:
         importance: float = 0.5,
         surprise: float | None = None,
         consolidated: int = 0,
+        qjl_bits: bytes | None = None,
     ) -> None:
         self._check_open()
         blob = struct.pack(f'{len(embedding)}f', *embedding)
@@ -800,6 +801,12 @@ class StorageEngine:
                     'INSERT INTO vec_entries (entry_id, embedding) VALUES (?, ?)',
                     (entry_id, blob),
                 )
+                if qjl_bits is not None:
+                    self._conn.execute(
+                        'INSERT INTO vec_entries_qjl (entry_id, embedding) '
+                        'VALUES (?, vec_bit(?))',
+                        (entry_id, qjl_bits),
+                    )
                 self._conn.commit()
             except sqlite3.Error as e:
                 self._conn.rollback()
@@ -1639,7 +1646,11 @@ class StorageEngine:
         return cursor.fetchone()[0]
 
     def truncate_all_embeddings_to_dim(self, new_dim: int) -> int:
-        """Destructively rewrites vec_entries blobs to the first new_dim floats."""
+        """Destructively rewrites vec_entries blobs to the first new_dim floats.
+
+        sqlite-vec vec0 tables fix float[N] at creation time; shrinking N requires
+        dropping and recreating the virtual table, then re-inserting rows.
+        """
         self._check_open()
         old = self.get_embedding_dim()
         if new_dim > old:
@@ -1649,6 +1660,7 @@ class StorageEngine:
         count = 0
         with self._lock:
             rows = self._conn.execute('SELECT entry_id, embedding FROM vec_entries').fetchall()
+            rebuilt: list[tuple[str, bytes]] = []
             for entry_id, blob in rows:
                 cur = len(blob) // 4
                 if cur != old:
@@ -1657,11 +1669,17 @@ class StorageEngine:
                     )
                 vec = struct.unpack(f'{old}f', blob)
                 new_blob = struct.pack(f'{new_dim}f', *vec[:new_dim])
-                self._conn.execute(
-                    'UPDATE vec_entries SET embedding = ? WHERE entry_id = ?',
-                    (new_blob, entry_id),
-                )
+                rebuilt.append((entry_id, new_blob))
                 count += 1
+
+            self._conn.execute('DROP TABLE IF EXISTS vec_entries')
+            self._conn.execute(vec_entries_ddl(new_dim))
+            for entry_id, new_blob in rebuilt:
+                self._conn.execute(
+                    'INSERT INTO vec_entries (entry_id, embedding) VALUES (?, ?)',
+                    (entry_id, new_blob),
+                )
+
             now = datetime.now(UTC).isoformat()
             self._conn.execute(
                 'INSERT OR REPLACE INTO db_metadata (key, value, updated_at) VALUES (?, ?, ?)',
@@ -1670,119 +1688,43 @@ class StorageEngine:
             self._conn.commit()
         return count
 
-    def is_quantized(self) -> bool:
-        """Check if the database has quantized embeddings."""
+    def store_entries_qjl_batch(self, entries: list[tuple[str, bytes]]) -> None:
+        """Batch insert QJL-encoded rows into vec_entries_qjl."""
         self._check_open()
         with self._lock:
-            row = self._conn.execute(
-                "SELECT value FROM db_metadata WHERE key = 'quantized_version'"
-            ).fetchone()
-        return row is not None and int(row[0]) > 0
-
-    def quantize_all_embeddings(self) -> int:
-        """Quantize all embeddings from float32 to uint8 with per-vector min/max scaling."""
-        self._check_open()
-        dim = self.get_embedding_dim()
-        count = 0
-        with self._lock:
-            rows = self._conn.execute('SELECT entry_id, embedding FROM vec_entries').fetchall()
-            for entry_id, blob in rows:
-                vec = struct.unpack(f'{dim}f', blob)
-                min_val = min(vec)
-                max_val = max(vec)
-                if max_val == min_val:
-                    scale = 0.0
-                    quantized = bytes(dim)
-                else:
-                    scale = (max_val - min_val) / 255.0
-                    quantized = bytes(
-                        min(255, max(0, round((v - min_val) / scale))) for v in vec
-                    )
+            for entry_id, packed_bits in entries:
                 self._conn.execute(
-                    'INSERT OR REPLACE INTO vec_entries_int8 '
-                    '(entry_id, quantized, scale, min_val) VALUES (?, ?, ?, ?)',
-                    (entry_id, quantized, scale, min_val),
+                    'INSERT OR REPLACE INTO vec_entries_qjl (entry_id, embedding) '
+                    'VALUES (?, vec_bit(?))',
+                    (entry_id, packed_bits),
                 )
-                count += 1
-            now = datetime.now(UTC).isoformat()
-            qv_row = self._conn.execute(
-                "SELECT value FROM db_metadata WHERE key = 'quantized_version'"
-            ).fetchone()
-            new_qv = str(int(qv_row[0]) + 1) if qv_row else '1'
-            self._conn.execute(
-                'INSERT OR REPLACE INTO db_metadata (key, value, updated_at) '
-                'VALUES (?, ?, ?)',
-                ('quantized_version', new_qv, now),
-            )
-            self._conn.execute(
-                'INSERT OR REPLACE INTO db_metadata (key, value, updated_at) '
-                'VALUES (?, ?, ?)',
-                ('vec_cache_version', new_qv, now),
-            )
             self._conn.commit()
-        return count
 
-    def rebuild_vec_from_int8(self) -> int:
-        """Rebuild float32 vec_entries from int8 source of truth."""
+    def search_qjl_coarse(
+        self, query_bits: bytes, *, limit: int = 10
+    ) -> list[tuple[str, float]]:
+        """Hamming KNN on QJL bit vectors (coarse pass)."""
         self._check_open()
-        dim = self.get_embedding_dim()
-        count = 0
         with self._lock:
-            rows = self._conn.execute(
-                'SELECT entry_id, quantized, scale, min_val FROM vec_entries_int8'
-            ).fetchall()
-            for entry_id, quantized_blob, scale, min_val in rows:
-                uint8_vals = list(quantized_blob)
-                if len(uint8_vals) != dim:
-                    raise DatabaseError(
-                        f'int8 blob for {entry_id[:16]}… has {len(uint8_vals)} values, '
-                        f'expected {dim}'
-                    )
-                vec = [(v * scale + min_val) if scale else min_val for v in uint8_vals]
-                blob = struct.pack(f'{dim}f', *vec)
-                self._conn.execute('DELETE FROM vec_entries WHERE entry_id = ?', (entry_id,))
-                self._conn.execute(
-                    'INSERT INTO vec_entries (entry_id, embedding) VALUES (?, ?)',
-                    (entry_id, blob),
-                )
-                count += 1
-            now = datetime.now(UTC).isoformat()
-            qv_row = self._conn.execute(
-                "SELECT value FROM db_metadata WHERE key = 'quantized_version'"
-            ).fetchone()
-            qv = qv_row[0] if qv_row else '1'
-            self._conn.execute(
-                'INSERT OR REPLACE INTO db_metadata (key, value, updated_at) '
-                'VALUES (?, ?, ?)',
-                ('vec_cache_version', qv, now),
+            cursor = self._conn.execute(
+                """SELECT entry_id, distance
+                   FROM vec_entries_qjl
+                   WHERE embedding MATCH vec_bit(?)
+                     AND k = ?
+                   ORDER BY distance""",
+                (query_bits, limit),
             )
-            self._conn.commit()
-        return count
+            return cursor.fetchall()
 
-    def store_entry_int8(self, entry_id: str, embedding: list[float]) -> None:
-        """Store a single embedding as int8 (for dual-write after quantize).
+    def rerank_by_vector(
+        self, query_embedding: list[float], candidate_ids: list[str], *, limit: int = 10
+    ) -> list[tuple[str, float]]:
+        """Re-rank candidates by float32 cosine distance (pass 2).
 
-        Commits per call — designed for single-entry use from remember().
-        For batch operations, use quantize_all_embeddings() instead.
+        Delegates to search_vectors_filtered() — semantic wrapper for the
+        QJL two-pass pipeline so callers express intent (re-rank) not mechanism.
         """
-        self._check_open()
-        min_val = min(embedding)
-        max_val = max(embedding)
-        if max_val == min_val:
-            scale = 0.0
-            quantized = bytes(len(embedding))
-        else:
-            scale = (max_val - min_val) / 255.0
-            quantized = bytes(
-                min(255, max(0, round((v - min_val) / scale))) for v in embedding
-            )
-        with self._lock:
-            self._conn.execute(
-                'INSERT OR REPLACE INTO vec_entries_int8 '
-                '(entry_id, quantized, scale, min_val) VALUES (?, ?, ?, ?)',
-                (entry_id, quantized, scale, min_val),
-            )
-            self._conn.commit()
+        return self.search_vectors_filtered(query_embedding, candidate_ids, limit=limit)
 
     def close(self) -> None:
         with self._lock:

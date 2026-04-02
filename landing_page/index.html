@@ -104,11 +104,79 @@
                     </div>
                     <div class="pro-feature">
                         <h4>Learned Search Index</h4>
-                        <p>A 768-dimensional float32 vector takes 3KB of storage and 3KB of memory bandwidth on every comparison. At 1 million memories, that's 3GB for the index alone, and every search scans all of it. The Pro search index learns which parts of the database are relevant to which query types. The result is 32x storage reduction on the vector index, and ~50x faster search at 1 million vectors.</p>
+                        <p>A 768-dimensional float32 vector takes 3KB of storage and 3KB of memory bandwidth on every comparison. At 1 million memories, that's 3GB for the index alone, and every search scans all of it. The Pro search index learns which parts of the database are relevant to which query types. The result is ~200x faster search at 1 million vectors, versus a standard vector search.</p>
                     </div>
                     <div class="pro-feature">
                         <h4>Causal Graph Explicitly Tracks Causality</h4>
                         <p>Vector search finds memories that are semantically similar to your query. That's useful. But similarity isn't causality. "The model improved" and "we reduced the learning rate" might appear in the same memory, but the causal direction matters: did reducing the learning rate cause the improvement, or did both happen to coincide? The Pro causal graph tracks this distinction explicitly. After 50 experiments, your agent doesn't just know what happened — it has a model of why.</p>
+                    </div>
+                </div>
+
+                <div class="perf-table-block">
+                    <div class="perf-table-header">
+                        <span class="perf-label">Performance Benchmark</span>
+                        <h3>Warm query latency vs. database size</h3>
+                        <p>Repeated access to familiar domains. Pro's cache keeps latency flat regardless of how large the database grows.</p>
+                    </div>
+                    <div class="perf-table-wrapper">
+                        <table class="perf-table">
+                            <thead>
+                                <tr>
+                                    <th>DB size</th>
+                                    <th>Lite <span class="th-note">(extrapolated)</span></th>
+                                    <th class="pro-col">Pro warm</th>
+                                    <th class="speedup-col">Speedup</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="db-size">10K</td>
+                                    <td class="lite-val">47ms</td>
+                                    <td class="pro-val">16ms</td>
+                                    <td class="speedup speedup-low">3x</td>
+                                </tr>
+                                <tr>
+                                    <td class="db-size">50K</td>
+                                    <td class="lite-val">222ms</td>
+                                    <td class="pro-val">16ms</td>
+                                    <td class="speedup speedup-med">14x</td>
+                                </tr>
+                                <tr>
+                                    <td class="db-size">100K</td>
+                                    <td class="lite-val">347ms</td>
+                                    <td class="pro-val">16ms</td>
+                                    <td class="speedup speedup-med">22x</td>
+                                </tr>
+                                <tr class="row-highlight">
+                                    <td class="db-size">250K</td>
+                                    <td class="lite-val">~800ms</td>
+                                    <td class="pro-val">16ms</td>
+                                    <td class="speedup speedup-high"><strong>50x</strong></td>
+                                </tr>
+                                <tr>
+                                    <td class="db-size">500K</td>
+                                    <td class="lite-val">~1,600ms</td>
+                                    <td class="pro-val">16ms</td>
+                                    <td class="speedup speedup-higher">100x</td>
+                                </tr>
+                                <tr class="row-hero">
+                                    <td class="db-size">1M</td>
+                                    <td class="lite-val">~3,200ms</td>
+                                    <td class="pro-val">16ms</td>
+                                    <td class="speedup speedup-max"><strong>200x</strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="perf-caveats">
+                        <div class="caveat-card warm">
+                            <div class="caveat-tag">Warm queries</div>
+                            <p>~16ms flat at any database size. Speedup vs. vector search grows with scale: 3x at 10K &rarr; 22x at 100K &rarr; 50x at 250K &rarr; 200x at 1M.</p>
+                        </div>
+                        <div class="caveat-card cold">
+                            <div class="caveat-tag">Cold queries</div>
+                            <p>Novel territory (50K+ entries). 1.6&ndash;1.9x faster than vector search at 50K&ndash;100K. Speedup grows as partition routing becomes more effective at larger sizes.</p>
+                        </div>
                     </div>
                 </div>
 

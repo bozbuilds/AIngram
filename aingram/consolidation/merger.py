@@ -45,6 +45,21 @@ class MemoryMerger:
         self._embedder = embedder
         self._llm = llm
         self._session = session
+        self._qjl_projection = None
+
+    def _get_qjl_projection(self):
+        """Lazy-load and cache the QJL projection matrix."""
+        if self._qjl_projection is None:
+            from aingram.processing.qjl import NUM_PROJECTIONS, SEED, create_projection
+
+            dim = self._engine.get_embedding_dim()
+            with self._engine._lock:
+                row = self._engine._conn.execute(
+                    "SELECT value FROM db_metadata WHERE key = 'qjl_seed'"
+                ).fetchone()
+            seed = int(row[0]) if row else SEED
+            self._qjl_projection = create_projection(dim, NUM_PROJECTIONS, seed)
+        return self._qjl_projection
 
     def merge_similar(self, *, min_cluster_size: int = _MIN_CLUSTER_SIZE) -> MergeResult:
         if self._llm is None or self._session is None:
@@ -110,6 +125,10 @@ class MemoryMerger:
             canonical_str = content_data.decode('utf-8')
             embedding = self._embedder.embed(summary)
 
+            from aingram.processing.qjl import encode
+
+            qjl_bits = encode(embedding, self._get_qjl_projection())[0]
+
             self._engine.store_entry(
                 entry_id=entry_id,
                 content_hash=content_hash,
@@ -123,6 +142,7 @@ class MemoryMerger:
                 embedding=embedding,
                 importance=_SUMMARY_INITIAL_IMPORTANCE,
                 metadata={'merged_from': cluster},
+                qjl_bits=qjl_bits,
             )
             if dag_parents:
                 self._engine.insert_dag_parents(entry_id, dag_parents)
