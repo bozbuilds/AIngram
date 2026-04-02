@@ -9,9 +9,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid email address' });
   }
 
-  // Vercel auto-injects these environment variables when you link Supabase
+  // Vercel auto-injects these when you link Supabase. Prefer SERVICE_ROLE_KEY so
+  // waitlist inserts still work with RLS enabled on `public.waitlist` (service role bypasses RLS).
   const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  // Make sure you use the Service Role or Anon Key
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   
   if (!supabaseUrl || !supabaseKey) {

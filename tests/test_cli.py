@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
@@ -93,3 +92,10 @@ def test_compact_without_confirm_exits_error(runner: CliRunner, tmp_path, monkey
     r = runner.invoke(app, ['--db', str(tmp_path / 'x.db'), 'compact'])
     assert r.exit_code == 1
     assert 'confirm' in r.stderr or 'confirm' in r.stdout
+
+
+def test_watch_missing_db(runner: CliRunner, tmp_path) -> None:
+    from aingram.cli import app
+
+    r = runner.invoke(app, ['--db', str(tmp_path / 'nonexistent.db'), 'watch'])
+    assert r.exit_code != 0

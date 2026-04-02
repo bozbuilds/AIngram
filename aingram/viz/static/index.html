@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AIngram Viz</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="header">
+    <h1>AIngram Viz</h1>
+    <div id="stats-summary" class="stats-summary">Loading…</div>
+    <div id="loading" class="loading" aria-hidden="true">Loading…</div>
+  </header>
+  <nav class="tabs" role="tablist">
+    <button type="button" class="tab active" data-tab="graph" role="tab" aria-selected="true">Graph</button>
+    <button type="button" class="tab" data-tab="chains" role="tab" aria-selected="false">Chains</button>
+  </nav>
+  <div class="layout">
+    <main id="main-panel" class="main-panel"></main>
+    <aside id="sidebar" class="sidebar">
+      <h2>Entry</h2>
+      <div id="inspector" class="inspector">Select a node or chain entry.</div>
+    </aside>
+  </div>
+  <script src="d3.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

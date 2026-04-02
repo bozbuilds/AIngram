@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import sqlite3
 import struct
 import threading
@@ -25,6 +26,9 @@ from aingram.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+# SQLite default SQLITE_LIMIT_VARIABLE_NUMBER is 999; stay well under it.
+_SQLITE_VAR_LIMIT = 900
 
 
 def _sanitize_fts_query(query: str) -> str:
@@ -314,6 +318,49 @@ class StorageEngine:
                 (blob, limit),
             )
             return cursor.fetchall()
+
+    def search_vectors_filtered(
+        self, query_embedding: list[float], candidate_ids: list[str], *, limit: int = 10
+    ) -> list[tuple[str, float]]:
+        """Cosine similarity search over a pre-filtered candidate set.
+
+        Fetches embedding blobs for candidate_ids, computes cosine similarity
+        in Python, and returns top results sorted by ascending distance.
+        Returns empty list if candidate_ids is empty.
+        """
+        self._check_open()
+        if not candidate_ids:
+            return []
+
+        query_norm = math.sqrt(sum(x * x for x in query_embedding))
+        if query_norm == 0:
+            return []
+
+        dim = len(query_embedding)
+        rows: list[tuple] = []
+        with self._lock:
+            for i in range(0, len(candidate_ids), _SQLITE_VAR_LIMIT):
+                chunk = candidate_ids[i : i + _SQLITE_VAR_LIMIT]
+                placeholders = ','.join('?' * len(chunk))
+                rows += self._conn.execute(
+                    f'SELECT entry_id, embedding FROM vec_entries '
+                    f'WHERE entry_id IN ({placeholders})',
+                    chunk,
+                ).fetchall()
+
+        results: list[tuple[str, float]] = []
+        for entry_id, blob in rows:
+            vec = struct.unpack(f'{dim}f', blob)
+            dot = sum(a * b for a, b in zip(query_embedding, vec))
+            vec_norm = math.sqrt(sum(x * x for x in vec))
+            if vec_norm == 0:
+                continue
+            cosine_sim = dot / (query_norm * vec_norm)
+            distance = 1.0 - cosine_sim
+            results.append((entry_id, distance))
+
+        results.sort(key=lambda x: x[1])
+        return results[:limit]
 
     _VALID_AGENT_ROLES = frozenset({'reader', 'contributor', 'admin'})
 
@@ -956,6 +1003,43 @@ class StorageEngine:
                 for row in cursor.fetchall()
             ]
 
+    def get_chain_count(self) -> int:
+        self._check_open()
+        with self._lock:
+            return self._conn.execute('SELECT COUNT(*) FROM reasoning_chains').fetchone()[0]
+
+    def get_all_chains(self, *, limit: int = 100) -> list[ReasoningChain]:
+        self._check_open()
+        with self._lock:
+            rows = self._conn.execute(
+                'SELECT chain_id, title, status, outcome, created_by_session, created_at '
+                'FROM reasoning_chains ORDER BY created_at DESC LIMIT ?',
+                (limit,),
+            ).fetchall()
+        return [
+            ReasoningChain(
+                chain_id=row[0],
+                title=row[1],
+                status=row[2],
+                outcome=row[3],
+                created_by_session=row[4],
+                created_at=row[5],
+            )
+            for row in rows
+        ]
+
+    def get_entities_for_entry(self, entry_id: str) -> list[Entity]:
+        """Return all Entity objects mentioned in a given memory entry."""
+        self._check_open()
+        with self._lock:
+            rows = self._conn.execute(
+                f'SELECT {_ENTITY_COLUMNS} FROM entities '
+                'JOIN entity_mentions ON entities.entity_id = entity_mentions.entity_id '
+                'WHERE entity_mentions.entry_id = ?',
+                (entry_id,),
+            ).fetchall()
+        return [self._row_to_entity(row) for row in rows]
+
     def store_knowledge_item(
         self,
         *,
@@ -1585,6 +1669,120 @@ class StorageEngine:
             )
             self._conn.commit()
         return count
+
+    def is_quantized(self) -> bool:
+        """Check if the database has quantized embeddings."""
+        self._check_open()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM db_metadata WHERE key = 'quantized_version'"
+            ).fetchone()
+        return row is not None and int(row[0]) > 0
+
+    def quantize_all_embeddings(self) -> int:
+        """Quantize all embeddings from float32 to uint8 with per-vector min/max scaling."""
+        self._check_open()
+        dim = self.get_embedding_dim()
+        count = 0
+        with self._lock:
+            rows = self._conn.execute('SELECT entry_id, embedding FROM vec_entries').fetchall()
+            for entry_id, blob in rows:
+                vec = struct.unpack(f'{dim}f', blob)
+                min_val = min(vec)
+                max_val = max(vec)
+                if max_val == min_val:
+                    scale = 0.0
+                    quantized = bytes(dim)
+                else:
+                    scale = (max_val - min_val) / 255.0
+                    quantized = bytes(
+                        min(255, max(0, round((v - min_val) / scale))) for v in vec
+                    )
+                self._conn.execute(
+                    'INSERT OR REPLACE INTO vec_entries_int8 '
+                    '(entry_id, quantized, scale, min_val) VALUES (?, ?, ?, ?)',
+                    (entry_id, quantized, scale, min_val),
+                )
+                count += 1
+            now = datetime.now(UTC).isoformat()
+            qv_row = self._conn.execute(
+                "SELECT value FROM db_metadata WHERE key = 'quantized_version'"
+            ).fetchone()
+            new_qv = str(int(qv_row[0]) + 1) if qv_row else '1'
+            self._conn.execute(
+                'INSERT OR REPLACE INTO db_metadata (key, value, updated_at) '
+                'VALUES (?, ?, ?)',
+                ('quantized_version', new_qv, now),
+            )
+            self._conn.execute(
+                'INSERT OR REPLACE INTO db_metadata (key, value, updated_at) '
+                'VALUES (?, ?, ?)',
+                ('vec_cache_version', new_qv, now),
+            )
+            self._conn.commit()
+        return count
+
+    def rebuild_vec_from_int8(self) -> int:
+        """Rebuild float32 vec_entries from int8 source of truth."""
+        self._check_open()
+        dim = self.get_embedding_dim()
+        count = 0
+        with self._lock:
+            rows = self._conn.execute(
+                'SELECT entry_id, quantized, scale, min_val FROM vec_entries_int8'
+            ).fetchall()
+            for entry_id, quantized_blob, scale, min_val in rows:
+                uint8_vals = list(quantized_blob)
+                if len(uint8_vals) != dim:
+                    raise DatabaseError(
+                        f'int8 blob for {entry_id[:16]}… has {len(uint8_vals)} values, '
+                        f'expected {dim}'
+                    )
+                vec = [(v * scale + min_val) if scale else min_val for v in uint8_vals]
+                blob = struct.pack(f'{dim}f', *vec)
+                self._conn.execute('DELETE FROM vec_entries WHERE entry_id = ?', (entry_id,))
+                self._conn.execute(
+                    'INSERT INTO vec_entries (entry_id, embedding) VALUES (?, ?)',
+                    (entry_id, blob),
+                )
+                count += 1
+            now = datetime.now(UTC).isoformat()
+            qv_row = self._conn.execute(
+                "SELECT value FROM db_metadata WHERE key = 'quantized_version'"
+            ).fetchone()
+            qv = qv_row[0] if qv_row else '1'
+            self._conn.execute(
+                'INSERT OR REPLACE INTO db_metadata (key, value, updated_at) '
+                'VALUES (?, ?, ?)',
+                ('vec_cache_version', qv, now),
+            )
+            self._conn.commit()
+        return count
+
+    def store_entry_int8(self, entry_id: str, embedding: list[float]) -> None:
+        """Store a single embedding as int8 (for dual-write after quantize).
+
+        Commits per call — designed for single-entry use from remember().
+        For batch operations, use quantize_all_embeddings() instead.
+        """
+        self._check_open()
+        min_val = min(embedding)
+        max_val = max(embedding)
+        if max_val == min_val:
+            scale = 0.0
+            quantized = bytes(len(embedding))
+        else:
+            scale = (max_val - min_val) / 255.0
+            quantized = bytes(
+                min(255, max(0, round((v - min_val) / scale))) for v in embedding
+            )
+        with self._lock:
+            self._conn.execute(
+                'INSERT OR REPLACE INTO vec_entries_int8 '
+                '(entry_id, quantized, scale, min_val) VALUES (?, ?, ?, ?)',
+                (entry_id, quantized, scale, min_val),
+            )
+            self._conn.commit()
 
     def close(self) -> None:
         with self._lock:

@@ -216,6 +216,37 @@ class TestRecall:
         assert len(results) <= 3
 
 
+def test_recall_uses_fts_prefilter_when_above_threshold(tmp_path, mock_embedder):
+    """When FTS returns >= threshold candidates, filtered vector search is used."""
+    from unittest.mock import patch
+
+    from aingram.store import MemoryStore
+
+    db = str(tmp_path / 'test.db')
+    mem = MemoryStore(db, embedder=mock_embedder)
+
+    for i in range(60):
+        mem.remember(f'gradient descent step {i} in training loop')
+
+    with (
+        patch.object(
+            mem._engine,
+            'search_vectors_filtered',
+            wraps=mem._engine.search_vectors_filtered,
+        ) as mock_filtered,
+        patch.object(
+            mem._engine,
+            'search_vectors',
+            wraps=mem._engine.search_vectors,
+        ) as mock_full,
+    ):
+        mem.recall('gradient descent', limit=10)
+        assert mock_filtered.call_count == 1
+        assert mock_full.call_count == 0
+
+    mem.close()
+
+
 class TestGetContext:
     def test_returns_string(self, store):
         store.remember('context entry one')
@@ -518,3 +549,33 @@ class TestConsolidate:
             # Verify LLM was passed to MemoryMerger
             _, kwargs = mock_merger_init.call_args
             assert kwargs['llm'] is llm
+
+
+def test_quantize_requires_confirm(tmp_path, mock_embedder):
+    from aingram.store import MemoryStore
+
+    mem = MemoryStore(str(tmp_path / 'test.db'), embedder=mock_embedder)
+    with pytest.raises(ValueError, match='destructive'):
+        mem.quantize()
+    mem.close()
+
+
+def test_quantize_and_remember_dual_writes(tmp_path, mock_embedder):
+    from aingram.store import MemoryStore
+
+    mem = MemoryStore(str(tmp_path / 'test.db'), embedder=mock_embedder)
+
+    mem.remember('before quantize')
+    assert not mem._engine.is_quantized()
+
+    mem.quantize(confirm=True)
+    assert mem._engine.is_quantized()
+
+    mem.remember('after quantize')
+
+    with mem._engine._lock:
+        count = mem._engine._conn.execute(
+            'SELECT COUNT(*) FROM vec_entries_int8'
+        ).fetchone()[0]
+    assert count == 2
+    mem.close()

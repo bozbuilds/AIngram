@@ -29,6 +29,7 @@ class AIngramConfig:
     extractor_model: str = 'aingram-extractor'
     onnx_provider: str | None = None  # None=auto, 'cuda', 'npu', 'cpu'
     telemetry_enabled: bool = True  # opt-out: set false to disable anonymous usage telemetry
+    fts_prefilter_threshold: int = 50
 
     def __post_init__(self) -> None:
         if self.extractor_mode not in ('none', 'sonnet', 'local'):
@@ -49,6 +50,8 @@ def _coerce_value(field_name: str, raw: Any) -> Any:
         if isinstance(raw, str):
             return Path(raw).expanduser()
     if field_name == 'embedding_dim':
+        return int(raw)
+    if field_name == 'fts_prefilter_threshold' and raw is not None:
         return int(raw)
     if field_name in ('worker_enabled', 'telemetry_enabled'):
         return bool(raw)
@@ -98,6 +101,8 @@ def _merge_env_into(config: AIngramConfig, env: dict[str, str]) -> AIngramConfig
         updates['onnx_provider'] = v if v.lower() != 'none' else None
     if v := env.get('AINGRAM_TELEMETRY_ENABLED'):
         updates['telemetry_enabled'] = v.strip().lower() in ('1', 'true', 'yes', 'on')
+    if v := env.get('AINGRAM_FTS_PREFILTER_THRESHOLD'):
+        updates['fts_prefilter_threshold'] = int(v)
     return replace(config, **updates) if updates else config
 
 

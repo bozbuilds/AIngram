@@ -6,8 +6,8 @@ import sqlite3
 
 logger = logging.getLogger(__name__)
 
-# Lite caps at v7: FSRS columns + surprise + consolidated flag; no causal/sync/dag_parents.
-SCHEMA_VERSION = 7
+# Lite v8: vec_entries_int8 for optional embedding quantization.
+SCHEMA_VERSION = 8
 
 AGENT_SESSIONS_TABLE = """
 CREATE TABLE IF NOT EXISTS agent_sessions (
@@ -162,6 +162,15 @@ CREATE TABLE IF NOT EXISTS db_metadata (
 )
 """
 
+VEC_ENTRIES_INT8_TABLE = """
+CREATE TABLE IF NOT EXISTS vec_entries_int8 (
+    entry_id TEXT PRIMARY KEY,
+    quantized BLOB NOT NULL,
+    scale REAL NOT NULL,
+    min_val REAL NOT NULL
+)
+"""
+
 AGENT_TOKENS_TABLE = """
 CREATE TABLE IF NOT EXISTS agent_tokens (
     agent_id    TEXT PRIMARY KEY,
@@ -286,6 +295,7 @@ def apply_schema(
     conn.execute(KNOWLEDGE_ITEMS_TABLE)
     conn.execute(TASK_QUEUE_TABLE)
     conn.execute(AGENT_TOKENS_TABLE)
+    conn.execute(VEC_ENTRIES_INT8_TABLE)
     conn.execute(ENTRIES_FTS)
 
     if enable_vec:
