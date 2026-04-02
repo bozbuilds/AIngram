@@ -1,0 +1,226 @@
+# AIngram
+
+> Local-first, privacy-first agent memory in a single SQLite file. Apache-2.0.
+
+AIngram is a Python library that gives AI agents persistent, signed, searchable memory — all stored locally in one SQLite file with no cloud dependency. It stores typed `MemoryEntry` records with hybrid vector+FTS5 search, an optional knowledge graph (entities + relationships), and reasoning chains. What makes it distinctive: fully local ONNX embeddings (Nomic MiniLM), Ed25519-signed entries for tamper-evidence, and built-in MCP server support.
+
+## Installation
+
+```
+pip install aingram                         # core
+pip install "aingram[mcp]"                  # + MCP server
+pip install "aingram[extraction]"           # + local entity extraction (GLiNER)
+pip install "aingram[api]"                  # + Anthropic API (Sonnet extractor)
+pip install "aingram[langchain]"            # + LangChain adapter
+pip install "aingram[crewai]"               # + CrewAI adapter
+pip install "aingram[langgraph]"            # + LangGraph adapter
+pip install "aingram[autogen]"              # + AutoGen adapter
+pip install "aingram[smolagents]"           # + smolagents adapter
+pip install "aingram[all]"                  # all optional extras
+```
+
+## Core Python API
+
+### MemoryStore
+
+```python
+from aingram import MemoryStore
+
+mem = MemoryStore(
+    db_path,                          # str — path to SQLite file (created if absent)
+    *,
+    agent_name='default',             # str — name used to identify this agent session
+    embedder=None,                    # override the default NomicEmbedder
+    embedding_dim=None,               # int | None — must match existing DB if set
+    models_dir=None,                  # Path | str | None — ONNX model cache location
+    extractor=None,                   # override entity extractor
+    config=None,                      # AIngramConfig | None
+)
+# Note: creates the database and downloads the ONNX model on first instantiation
+# if not already cached in models_dir (default: ~/.aingram/models/).
+```
+
+### remember — store a memory entry
+
+```python
+entry_id: str = mem.remember(
+    content,                          # str or dict
+    entry_type='observation',         # hypothesis|method|result|lesson|observation|decision|meta
+    chain_id=None,                    # str | None — attach to a reasoning chain
+    tags=None,                        # list[str] | None
+    confidence=None,                  # float 0–1 | None
+    metadata=None,                    # dict | None — stored as JSON
+    # also accepts: parent_entry_id=None, parent_ids=None (DAG linkage)
+)
+```
+
+### recall — hybrid semantic search
+
+```python
+results: list[EntrySearchResult] = mem.recall(
+    query,                            # str — natural language query
+    limit=20,                         # int — max results to return
+    verify=True,                      # bool — verify Ed25519 signatures
+    entry_type=None,                  # str | None — filter by type
+    chain_id=None,                    # str | None — filter by reasoning chain
+    session_id=None,                  # str | None — filter by session
+    entry_id=None,                    # str | None — fetch a specific entry by ID
+)
+# Each result: result.entry (MemoryEntry), result.score (float), result.verified (bool | None)
+```
+
+### get_context — token-budget-aware string for LLM prompts
+
+```python
+context: str = mem.get_context(query, max_tokens=2000)
+# Returns top memories as a single newline-separated string, respecting token budget.
+```
+
+### Other key methods
+
+```python
+mem.create_chain(title: str) -> str
+# Create a reasoning chain; returns chain_id.
+
+mem.complete_chain(chain_id, *, outcome)
+# Mark chain complete. outcome: confirmed|refuted|partial|inconclusive|error
+
+mem.reference(*, source_id, target_id, reference_type)
+# Cross-reference two entries. reference_type: builds_on|contradicts|supports|refines|supersedes
+
+mem.consolidate()
+# Run decay + merge + contradiction detection + knowledge synthesis.
+
+mem.compact(*, confirm: bool, target_dim: int)
+# One-way Matryoshka embedding truncation. Requires confirm=True.
+
+mem.quantize(*, confirm: bool)
+# One-way uint8 quantization (~4x storage reduction). Requires confirm=True.
+
+mem.export_json(path)
+# Export full database to JSON.
+
+mem.import_json(path, *, merge: bool = False)
+# Import from a JSON export. merge=False requires an empty target DB.
+
+mem.verify(session_id=None) -> VerificationResult
+# Verify Ed25519 signature chain. Defaults to current session.
+# VerificationResult: .valid (bool), .session_id (str), .errors (list[str]), .entries_checked (int)
+
+mem.stats  # property: dict — entry_count, db_size_bytes, embedding_dim
+
+mem.close()  # close DB — also works as context manager: with MemoryStore(...) as mem:
+```
+
+## CLI Reference
+
+```
+aingram [--db PATH] [--no-telemetry] <command>
+
+setup                             report model cache path and print download instructions
+add TEXT                          store a memory entry
+search QUERY [--limit N]          semantic search
+status                            show DB stats (entry count, size, embedding dim)
+entities [--limit N]              list known entities
+graph NAME                        expand entity relationships in the knowledge graph
+consolidate                       run memory consolidation (decay, merge, synthesis)
+compact --target-dim N --yes      truncate embeddings to N dims (one-way, Matryoshka)
+quantize [--yes] [--rebuild]      uint8 quantize embeddings or rebuild float32 cache
+watch [--json]                    live tail new entries (Ctrl+C to stop)
+viz [--port N] [--no-open]        start local visualization server (default port: 8420)
+export PATH [--agent NAME]        export database to JSON
+import PATH [--merge]             import from JSON export
+agent create NAME [--role ROLE]   create agent bearer token (role: reader|contributor|admin)
+agent list                        list all agents and their roles
+agent revoke NAME                 revoke an agent token
+```
+
+## Framework Integrations
+
+**LangChain** — `pip install "aingram[langchain]"`
+
+```python
+from aingram.integrations.langchain import AIngramChatMessageHistory
+history = AIngramChatMessageHistory(db_path='memory.db', session_id='my-session')
+# Pass to RunnableWithMessageHistory or ConversationChain as the message history backend.
+```
+
+**CrewAI** — `pip install "aingram[crewai]"`
+
+```python
+from aingram.integrations.crewai import AIngramCrewMemory
+memory = AIngramCrewMemory(db_path='memory.db')
+memory.save("The user prefers concise answers")
+results = memory.search("user preferences")   # returns list[EntrySearchResult]
+memory.reset()                                # no-op (AIngram is append-only)
+```
+
+**LangGraph** — `pip install "aingram[langgraph]"`
+
+```python
+from aingram.integrations.langgraph import AIngramLangGraphStore
+store = AIngramLangGraphStore(db_path='memory.db')
+store.put(('agent', 'task_001'), 'plan', {'steps': [...]})
+item = store.get(('agent', 'task_001'), 'plan')   # returns _StoreItem | None
+if item:
+    value = item.value                             # the original dict
+# Note: search() does not enforce namespace scoping (single-file backend limitation).
+```
+
+**AutoGen** — `pip install "aingram[autogen]"`
+
+```python
+from aingram.integrations.autogen import AIngramAutogenMemory
+memory = AIngramAutogenMemory(db_path='memory.db')
+memory.add("Completed subtask 3 successfully")
+context = memory.query("subtask status")   # returns str (newline-joined content)
+print(context)
+```
+
+**smolagents** — `pip install "aingram[smolagents]"`
+
+```python
+from aingram.integrations.smolagents import AIngramSmolagentsMemory
+memory = AIngramSmolagentsMemory(db_path='memory.db')
+memory.write_memory("Tool call failed with timeout")
+results = memory.retrieve_memory("tool failures")   # returns list[EntrySearchResult]
+```
+
+## Configuration
+
+```
+Environment variables (all optional):
+  AINGRAM_MODELS_DIR                path to ONNX model cache (default: ~/.aingram/models)
+  AINGRAM_EMBEDDING_DIM             embedding dimensions (default: 768)
+  AINGRAM_LLM_URL                   Ollama base URL (default: http://localhost:11434)
+  AINGRAM_LLM_MODEL                 Ollama model name (default: mistral)
+  AINGRAM_EXTRACTOR_MODE            none | local | sonnet (default: none)
+  AINGRAM_EXTRACTOR_MODEL           extractor model name (default: aingram-extractor)
+  AINGRAM_ONNX_PROVIDER             cpu | cuda | npu (default: auto)
+  AINGRAM_TELEMETRY_ENABLED         true | false (default: true)
+  AINGRAM_LOG_LEVEL                 DEBUG | INFO | WARNING | ERROR (default: INFO)
+  AINGRAM_WORKER_ENABLED            true | false (default: true)
+  AINGRAM_CONSOLIDATION_INTERVAL    seconds between auto-consolidation runs (default: unset)
+  AINGRAM_FTS_PREFILTER_THRESHOLD   min FTS candidates before filtered vector search (default: 50)
+```
+
+Config file: `~/.aingram/config.toml` — same keys as env vars, without the `AINGRAM_` prefix:
+
+```toml
+log_level = "DEBUG"
+extractor_mode = "local"
+llm_url = "http://localhost:11434"
+fts_prefilter_threshold = 100
+```
+
+## Optional: more detail
+
+- [README](README.md)
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [Examples](examples/)
+- [Docs](docs/)
+- [MCP server](aingram/mcp_server.py)
+- [Schema & migrations](aingram/storage/schema.py)
+- [Public types](aingram/types.py)
+- [Tests](tests/)
