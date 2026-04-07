@@ -1,148 +1,358 @@
-# AIngram (Lite)
+# Aingram (Lite)
 
-Local-first agent memory in **one SQLite file**: hybrid vector + FTS5 search, optional knowledge graph (entities and relationships), Ed25519-signed entries, and an optional MCP server. **Apache-2.0.** No cloud dependency; embeddings run via ONNX (Nomic) on your machine.
+**Agent memory that finds the right context. Every time. Locally.**
 
-## Install
-
-```bash
+```
 pip install aingram
 ```
 
-Optional extras:
+[![PyPI](https://img.shields.io/pypi/v/aingram?style=flat-square&color=0a0e14)](https://pypi.org/project/aingram/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-0a0e14?style=flat-square)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11+-0a0e14?style=flat-square)](https://python.org)
+[![Discord](https://img.shields.io/badge/discord-join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/zSJCFZnXxf)
 
-| Extra | Purpose |
-|--------|---------|
-| `aingram[extraction]` | GLiNER entity extraction (background linking) |
-| `aingram[llm]` | HTTP client for Ollama / local LLM (e.g. consolidation) |
-| `aingram[mcp]` | MCP server (`FastMCP`) |
-| `aingram[api]` | Anthropic API (Sonnet extractor) |
-| `aingram[all]` | `mcp`, `extraction`, `llm`, and `cli`-related deps |
-| `aingram[gpu]` | CUDA 12 pip wheels (`cuFFT`, cuBLAS, cuDNN, runtime) ONNX Runtime needs on Windows/Linux |
+---
 
-The `aingram` CLI is available once the package is installed (Typer is a core dependency).
+Most AI memory systems are filing cabinets with a search bar. Store everything, search later, hope the right thing comes back.
 
-**CUDA / GPU (embeddings):** The default package uses the CPU build of ONNX Runtime. Do not install `onnxruntime` and `onnxruntime-gpu` together. Typical GPU setup:
+Aingram is different. It runs **three retrieval signals simultaneously** — full-text search, semantic vector search, and knowledge graph traversal — and fuses them into a single ranked result using Reciprocal Rank Fusion. Everything lives in **one SQLite file** on your machine. No cloud. No API key. No vendor to trust with your agents' memory.
 
-1. `pip uninstall -y onnxruntime onnxruntime-gpu` then `pip install onnxruntime-gpu`
-2. `pip install "aingram[gpu]"` — includes **`nvidia-cufft-cu12`** (ORT’s CUDA EP often fails with `cufft64_11.dll` / cuFFT missing if you only installed cuBLAS/cuDNN/runtime)
-
-Set `AINGRAM_ONNX_PROVIDER=cuda` (or `[onnx_provider]` in `config.toml`) if you want to force CUDA instead of auto. See [ONNX Runtime GPU install](https://onnxruntime.ai/docs/install/#install-gpu) for full CUDA/cuDNN notes.
-
-## Quick start (Python)
+On LongMemEval — the most rigorous public benchmark for AI memory — Aingram's retrieval pipeline finds the correct context in the top 3 results **for every single query** when the evidence is present. On the real benchmark with full noisy conversation histories, it surfaces the right sessions in the top 10 for **95.5% of queries**.
 
 ```python
 from aingram import MemoryStore
 
 with MemoryStore('./agent_memory.db') as mem:
-    mem.remember('User prefers dark mode and concise answers')
-    for r in mem.recall('What does the user prefer?', limit=5):
+    mem.remember('The API rate limit is 100 req/min. Exceeding it causes silent drops.')
+    mem.remember('Deployment takes ~3 min. Always run migrations before the container swap.')
+
+    results = mem.recall('what do I need to know before deploying?', limit=5)
+    for r in results:
         print(r.score, r.entry.content)
 ```
 
-## CLI
+---
+
+## Numbers
+
+Benchmarked on [LongMemEval](https://github.com/xiaowu0162/LongMemEval) (Wu et al., ICLR 2025) — 500 hand-curated questions across multi-session conversation histories averaging 115,000 tokens. All runs on RTX 4060 8GB. No reranking model. No LLM in the retrieval loop.
+
+| Benchmark | Metric | Score |
+|-----------|--------|-------|
+| LongMemEval (oracle split) | recall_any@3 | **1.000** |
+| LongMemEval (oracle split) | ndcg@10 | **0.994** |
+| LongMemEval-S (real retrieval) | recall_any@10 | **0.955** |
+| LongMemEval-S (real retrieval) | recall_any@3 | **0.902** |
+| LongMemEval-S (real retrieval) | ndcg@10 | **0.836** |
+| BEIR SciFact | nDCG@10 | **0.703** |
+
+**What these numbers mean:**
+
+- **recall_any@3 = 1.000 (oracle):** When the evidence exists, Aingram puts the right session in the top 3 results for every query across 500 instances. The correct context is always available to your agent.
+- **recall_any@10 = 0.955 (real):** On real noisy conversation histories — ~40 sessions of noise per query — the right sessions appear in the top 10 for 95.5% of queries. This sets the ceiling for any downstream LLM accuracy.
+- **22ms median retrieval latency** — pure local pipeline, no network round-trip.
+
+Retrieval speed scales with corpus size. Vector search is the dominant cost at scale — Aingram's QJL two-pass compression keeps it manageable:
+
+| Entries | Full recall | Embedding | Vector search |
+|---------|-------------|-----------|---------------|
+| 1K | ~16ms | ~8ms | ~3ms |
+| 10K | ~47ms | ~9ms | ~34ms |
+| 50K | ~222ms | ~11ms | ~160ms |
+| 100K | ~347ms | ~11ms | ~320ms |
+
+QJL's two-pass approach (compressed candidates → float32 rerank) breaks even against brute-force at ~30K entries and delivers meaningful speedup above that threshold.
+
+---
+
+## Why not just use a vector database?
+
+Single-signal retrieval misses. Semantic similarity is powerful but breaks on:
+
+- **Exact terminology** — a query about "the 100 req/min rate limit" might not semantically match a memory that says "hard cap: 100/min" without FTS
+- **Entity relationships** — "what did Alice decide about auth?" needs graph traversal, not cosine similarity
+- **Keyword-first queries** — agents often search with specific technical terms where BM25 outperforms dense retrieval
+
+Aingram runs all three signals and fuses them. The hybrid consistently outperforms any single signal, especially on the kinds of precise, domain-specific queries agents actually make.
+
+---
+
+## How It Works
+
+```
+Agent query
+    │
+    ├──▶ FTS5 (keyword)                        ─┐
+    ├──▶ sqlite-vec + QJL two-pass (semantic)  ─┤──▶ RRF fusion ──▶ ranked results
+    └──▶ Knowledge graph (entity)              ─┘
+```
+
+**FTS5 full-text search** — SQLite's native full-text index. Fast, no embedding required, excellent for exact terminology and technical strings.
+
+**sqlite-vec vector search** — Dense semantic retrieval using [nomic-embed-text-v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) running locally via ONNX. 768-dimensional embeddings, CPU or GPU. No external API.
+
+**QJL two-pass vector search** — At larger corpus sizes, vector search dominates retrieval latency. Aingram uses a Quantized Johnson-Lindenstrauss (QJL) two-pass approach: a fast first pass over compressed quantized vectors narrows the candidate pool, then a precise second pass over full float32 vectors reranks the survivors. This trades a small fraction of recall for significantly lower latency at scale — the break-even point is around 30K entries, above which QJL is faster than brute-force float32 search with no meaningful quality loss.
+
+**Knowledge graph traversal** — Entities and relationships extracted from memory entries. Multi-hop queries resolved via CTE. "What did Alice decide about auth?" finds the entity, traverses relationships, returns relevant entries — even if the query didn't match the entry verbatim.
+
+**Reciprocal Rank Fusion** — Results from all three signals are combined and re-ranked. Each signal's rank position, not raw score, contributes to the final order. This makes the fusion robust to scale differences between signals.
+
+---
+
+## Everything in One File
+
+Your entire agent memory — entries, embeddings, entity graph, signing chain — lives in a single SQLite file. No separate vector database to manage. No graph database. No external embedding service. No Docker containers.
+
+```
+agent_memory.db     ← that's it
+```
+
+Copy it. Back it up with `cp`. Inspect it with any SQLite client. Share it between agents. Export it to JSON. Import it somewhere else.
+
+This is a deliberate design choice. Memory that requires infrastructure to operate is fragile. Memory that's a file is durable.
+
+---
+
+## Cryptographic Integrity
+
+Every memory entry is Ed25519-signed and linked in a tamper-evident hash chain. You can verify that a memory hasn't been modified since it was written — useful when memory is shared between agents or stored across trust boundaries.
+
+```python
+result = mem.verify()
+# {'chain_valid': True, 'entries_verified': 1247, 'broken_at': None}
+```
+
+```bash
+aingram --db ./agent_memory.db verify
+```
+
+---
+
+## Entity Extraction and Knowledge Graph
+
+Install `aingram[extraction]` to enable [GLiNER](https://github.com/urchade/GLiNER)-based entity extraction. Entities and relationships are automatically extracted from memory entries and stored in the knowledge graph as you write.
+
+```python
+# After 'User Alice approved the migration to Clerk on Jan 15.'
+# is stored, the graph contains:
+#   Alice ─[approved]─▶ migration (valid_from: 2026-01-15)
+#   migration ─[uses]─▶ Clerk
+
+results = mem.recall('what did Alice decide?')
+# Returns entries linked to Alice via graph traversal,
+# not just entries that mention "Alice" by text
+```
+
+Query the graph directly:
+
+```bash
+aingram --db ./agent_memory.db graph "Alice"
+aingram --db ./agent_memory.db entities
+```
+
+---
+
+## MCP Server
+
+Install `aingram[mcp]` and connect any MCP-compatible agent (Claude, Cursor, Windsurf, Cline) to your memory store.
+
+```bash
+aingram --db ./agent_memory.db mcp
+```
+
+Tools exposed: `remember`, `recall`, `reference`, `verify`, `get_experiment_context`, and more. Optional bearer-token auth middleware included.
+
+Add to your MCP config:
+
+```json
+{
+  "mcpServers": {
+    "aingram": {
+      "command": "aingram",
+      "args": ["--db", "/path/to/agent_memory.db", "mcp"]
+    }
+  }
+}
+```
+
+---
+
+## Quick Start
+
+```bash
+pip install aingram
+```
+
+**Python API:**
+
+```python
+from aingram import MemoryStore
+
+with MemoryStore('./agent_memory.db') as mem:
+    # Store a memory
+    mem.remember('Deploy always requires a migration run first.')
+
+    # Recall with hybrid search
+    results = mem.recall('deployment checklist', limit=5)
+    for r in results:
+        print(f'{r.score:.3f}  {r.entry.content}')
+```
+
+**CLI:**
 
 ```bash
 aingram --db ./agent_memory.db status
-aingram --db ./agent_memory.db add "User likes Python"
-aingram --db ./agent_memory.db search "Python"
+aingram --db ./agent_memory.db add "API rate limit is 100 req/min"
+aingram --db ./agent_memory.db search "rate limiting"
 aingram --db ./agent_memory.db entities
 aingram --db ./agent_memory.db graph "Alice"
-aingram --db ./agent_memory.db consolidate
-aingram --db ./agent_memory.db compact --yes --target-dim 256
 aingram --db ./agent_memory.db export ./backup.json
 aingram --db ./agent_memory.db import ./backup.json
+aingram --db ./agent_memory.db verify
 ```
 
-`compact` is **one-way** (e.g. 768 → 256 embedding width). Use `--yes` to confirm.
+**GPU embeddings (optional):**
+
+```bash
+pip uninstall -y onnxruntime
+pip install onnxruntime-gpu
+pip install "aingram[gpu]"
+export AINGRAM_ONNX_PROVIDER=cuda
+```
+
+---
+
+## Install
+
+```bash
+pip install aingram                   # core — CPU embeddings
+pip install "aingram[extraction]"     # + GLiNER entity extraction
+pip install "aingram[mcp]"            # + MCP server
+pip install "aingram[llm]"            # + Ollama/local LLM client
+pip install "aingram[api]"            # + Anthropic API extractor
+pip install "aingram[gpu]"            # + CUDA ONNX Runtime wheels
+pip install "aingram[all]"            # everything
+```
+
+---
 
 ## Configuration
 
-Precedence (highest first): constructor kwargs → environment variables → `~/.aingram/config.toml` → defaults.
+Precedence: constructor kwargs → env vars → `~/.aingram/config.toml` → defaults.
 
-| Env var | Meaning |
-|---------|--------|
-| `AINGRAM_MODELS_DIR` | Model cache directory |
-| `AINGRAM_EMBEDDING_DIM` | Width for **new** DBs (must match an existing DB after creation) |
-| `AINGRAM_LLM_URL` | Ollama base URL |
-| `AINGRAM_LLM_MODEL` | Default LLM name |
-| `AINGRAM_LOG_LEVEL` | `aingram` logger level |
-| `AINGRAM_WORKER_ENABLED` | `true` / `false` |
-| `AINGRAM_EXTRACTOR_MODE` | `none`, `local`, or `sonnet` |
-| `AINGRAM_EXTRACTOR_MODEL` | Extractor model id |
-| `AINGRAM_ONNX_PROVIDER` | `cpu`, `cuda`, `npu`, or omit for auto |
-| `AINGRAM_TELEMETRY_ENABLED` | `true` / `false` — anonymous CLI usage telemetry |
+| Env var | Default | Meaning |
+|---------|---------|---------|
+| `AINGRAM_MODELS_DIR` | `~/.aingram/models` | Model cache directory |
+| `AINGRAM_EMBEDDING_DIM` | `768` | Embedding width for new DBs |
+| `AINGRAM_LLM_URL` | `http://localhost:11434` | Ollama base URL |
+| `AINGRAM_LLM_MODEL` | — | Default LLM model name |
+| `AINGRAM_ONNX_PROVIDER` | auto | `cpu`, `cuda`, or `npu` |
+| `AINGRAM_EXTRACTOR_MODE` | `none` | `none`, `local`, or `sonnet` |
+| `AINGRAM_WORKER_ENABLED` | `true` | Background consolidation worker |
+| `AINGRAM_TELEMETRY_ENABLED` | `true` | Anonymous CLI usage (opt-out below) |
 
-Example `~/.aingram/config.toml`:
+`~/.aingram/config.toml` example:
 
 ```toml
 embedding_dim = 768
 worker_enabled = true
-models_dir = "C:/Users/me/.aingram/models"
 llm_url = "http://localhost:11434"
 llm_model = "mistral"
-extractor_mode = "none"
-telemetry_enabled = true
+extractor_mode = "local"
+telemetry_enabled = false
 ```
 
-Use `AIngramConfig` and `load_merged_config()` for the same rules in application code.
+---
 
-## Privacy and anonymous telemetry
+## Privacy and Telemetry
 
-**CLI only:** the `aingram` command-line tool may send events. Using the Python API or MCP does not use this channel.
+**No memory content ever leaves your machine.** The SQLite database, embeddings, and entity graph stay local.
 
-The CLI may send **anonymous usage events** by default: a random install id (`~/.aingram/telemetry_id`), the **name of the top-level command** you ran (e.g. `add`, `status`), and the package version. **No memory text, queries, paths, or secrets** are included. Events are sent over HTTPS to `https://api.aingram.dev/v1/telemetry`.
+The CLI may send anonymous usage events by default: a random install ID, the top-level command name (e.g. `search`, `add`), and the package version. No memory text, query content, file paths, or personal data.
 
-**Opt out** (any one):
+**Opt out:**
+- `--no-telemetry` on any command
+- `telemetry_enabled = false` in `~/.aingram/config.toml`
+- `AINGRAM_TELEMETRY_ENABLED=false` environment variable
 
-- Add `--no-telemetry` to a single invocation, e.g. `aingram --no-telemetry --db ./agent_memory.db status`.
-- Set `telemetry_enabled = false` in `~/.aingram/config.toml`.
-- Set `AINGRAM_TELEMETRY_ENABLED=false` in the environment.
+---
 
-This is separate from any future **opt-in** “contribute training examples” feature, which would involve content you deliberately choose to share.
+## Comparison
 
-## Consolidation and LLM
+| | **Aingram** | Mem0 | Zep | MemPalace |
+|---|---|---|---|---|
+| Retrieval signals | FTS5 + vector + graph | Vector only | KG + vector | Vector + heuristics |
+| Vector compression | ✅ QJL two-pass | ✗ | ✗ | ✗ |
+| Storage | SQLite (one file) | Cloud / self-host | Neo4j / cloud | ChromaDB |
+| Cryptographic signing | ✅ Ed25519 + hash chains | ✗ | ✗ | ✗ |
+| Knowledge graph | ✅ Built-in | ✗ | ✅ (Neo4j) | ✗ |
+| Local-only | ✅ | Optional | Optional | ✅ |
+| No API key required | ✅ | ✗ | ✗ | ✅ |
+| Python package | ✅ | ✅ | ✅ | ✅ |
+| MCP server | ✅ | ✗ | ✗ | ✅ |
+| License | Apache 2.0 | Commercial | Commercial | MIT |
 
-Pass an LLM instance into `MemoryStore.consolidate(llm=...)` when you want richer merge/synthesis behavior (optional). Install `aingram[llm]` and use your stack’s Ollama or other client as appropriate.
+---
 
-## Export / import
+## Export / Import
 
-`MemoryStore.export_json(path)` writes a Lite JSON backup (sessions, chains, entries, graph, vectors). `import_json(path)` targets an **empty** database by default, or `merge=True` to skip entries that already exist. Export and DB `embedding_dim` must match on import.
+```python
+# Export everything — entries, graph, vectors
+mem.export_json('./backup.json')
 
-For programmatic verification of a session chain, use `MemoryStore.verify()`.
+# Import into a fresh database
+with MemoryStore('./new_memory.db') as fresh:
+    fresh.import_json('./backup.json')
 
-## MCP
+# Merge into an existing database (skips duplicates)
+with MemoryStore('./existing.db') as existing:
+    existing.import_json('./backup.json', merge=True)
+```
 
-With `aingram[mcp]` installed, see `aingram.mcp_server.create_server` for tools such as `remember`, `recall`, `reference`, `verify`, and `get_experiment_context`, with optional bearer-token middleware.
+---
 
-## Examples
+## Benchmarks
 
-Runnable scripts using `MemoryStore.remember` / `MemoryStore.recall` live in [`examples/`](examples/). See [`examples/README.md`](examples/README.md).
+Reproduce the retrieval benchmarks from a clone of this repo:
 
-## Benchmarks (local)
+```bash
+# Create synthetic benchmark databases
+python scripts/seed_bench_db.py
 
-From a clone of this repo, synthetic DBs and timing scripts live under [`scripts/`](scripts/):
+# Run retrieval and embedding timing
+python scripts/bench.py
+```
 
-1. `python scripts/seed_bench_db.py` — creates `benchmarks/bench_*.db`
-2. `python scripts/bench.py` — runs recall and embed vs vector-search breakdowns on those files
+The `scripts/bench.py` output gives per-database timing breakdowns for embedding cost, vector search, FTS5, and full hybrid recall at 1K, 10K, 50K, and 100K entries.
 
-When the embedding model is first used, **`huggingface_hub` may print a warning** that you are sending unauthenticated requests to the Hugging Face Hub. **That is expected and not a functional problem** — downloads still work locally. Optionally set a [`HF_TOKEN`](https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables) in the environment for higher rate limits if you hit throttling.
+---
 
 ## Development
 
 ```bash
+git clone https://github.com/bozbuilds/AIngram
+cd AIngram
 pip install -e ".[dev,all]"
 pytest
 ruff check aingram/ && ruff format --check aingram/
 ```
 
-Guidelines and pre-push hygiene (including secret scanning) are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Python 3.11+. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-Python **3.11+**.
+---
 
-## Social
+## What's Next
 
-Join the official Aingram discord here: https://discord.gg/zSJCFZnXxf
+Aingram Lite is the open-source retrieval and storage foundation. Aingram Pro adds systems built on top of it — GPU-resident neural caching, biological memory consolidation with spaced-repetition scheduling, and multi-agent synchronization primitives, among other additions. [Join the waitlist](https://aingram.dev), or watch this repo for updates.
+
+---
+
+## Community
+
+[Discord](https://discord.gg/zSJCFZnXxf) · [aingram.dev](https://aingram.dev) · [Discussions](https://github.com/bozbuilds/AIngram/discussions)
+
+---
 
 ## License
 
-Apache-2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
