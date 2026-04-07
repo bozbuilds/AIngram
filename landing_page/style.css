@@ -472,10 +472,15 @@ pre code {
 .speedup-high  { color: #a78bfa; }
 .speedup-higher { color: #fb923c; }
 .speedup-max {
+    font-size: 1rem;
+}
+.speedup-max strong {
     background: linear-gradient(to right, #f59e0b, #ef4444);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
-    font-size: 1rem;
+    color: transparent;
+    display: inline-block;
 }
 
 .row-highlight td { background: rgba(139, 92, 246, 0.04); }
