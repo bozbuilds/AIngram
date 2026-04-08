@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Multi-agent example:** `examples/05_multi_agent_shared_memory.py` — self-contained ~100-line demo of three async agents sharing one `MemoryStore` for concurrent hyperparameter exploration with piggyback recall.
+- **Example smoke test:** `tests/test_examples.py` added to CI matrix; guards example scripts against bit-rot.
+- **README:** new "Multi-agent patterns" section documenting the intra-process (shared instance) and cross-process (per-agent `MemoryStore`) concurrency shapes, with a pointer to the `bozbuilds/aingram-AR` companion repo for the full autoresearch integration.
+- **Fix:** `aingram.__version__` corrected from `'1.0.0'` to `'1.1.0'` (was not bumped alongside `pyproject.toml` in the 1.1.0 release).
+
 ## 1.1.0
 
 **Search, vectors, and packaging**

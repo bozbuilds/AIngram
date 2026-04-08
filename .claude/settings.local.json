@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(ls:*)",
-      "Bash(python -m pytest tests/test_qjl.py tests/test_qjl_search.py tests/test_storage/test_qjl_storage.py tests/test_pro_isolation.py tests/test_storage/test_migration.py -v)"
+      "Bash(python -m pytest tests/test_qjl.py tests/test_qjl_search.py tests/test_storage/test_qjl_storage.py tests/test_pro_isolation.py tests/test_storage/test_migration.py -v)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(python3:*)",
+      "Bash(python:*)"
     ]
   }
 }

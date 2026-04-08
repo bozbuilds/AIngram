@@ -58,6 +58,15 @@ Also run a quick search for internal codenames or private repo paths you do not 
 
 The `examples/` directory contains small scripts you can run after `pip install -e ".[dev,all]"` to exercise `MemoryStore.remember` / `MemoryStore.recall`.
 
+```bash
+python examples/01_basic_remember_recall.py
+python examples/02_store_stats.py
+python examples/03_recall_with_entry_type.py
+python examples/05_multi_agent_shared_memory.py   # concurrent agents, piggyback recall
+```
+
+All examples are smoke-tested by `tests/test_examples.py`; add a test there whenever you add a new example script.
+
 ## Licensing
 
 By contributing, you agree that your contributions are licensed under the same terms as the project (**Apache-2.0**). See `LICENSE` and `NOTICE`.

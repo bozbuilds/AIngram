@@ -1,7 +1,7 @@
 # aingram/__init__.py
 """AIngram — local-first, privacy-first agent memory (Lite, Apache-2.0)."""
 
-__version__ = '1.0.0'
+__version__ = '1.1.0'
 
 from aingram.config import AIngramConfig, load_merged_config
 from aingram.exceptions import (

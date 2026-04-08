@@ -186,6 +186,38 @@ memory.write_memory("Tool call failed with timeout")
 results = memory.retrieve_memory("tool failures")   # returns list[EntrySearchResult]
 ```
 
+## Multi-agent patterns
+
+Multiple agents can share one SQLite memory file. Two shapes:
+
+**Intra-process** (simplest — multiple async tasks, one `MemoryStore` instance):
+
+```python
+import asyncio
+from aingram import MemoryStore
+
+async def agent(idx: int, store: MemoryStore) -> None:
+    store.remember(f'agent {idx} finding', metadata={'agent_idx': idx})
+    hits = store.recall('finding', limit=5)
+
+async def main():
+    with MemoryStore('shared.db') as store:
+        await asyncio.gather(*[agent(i, store) for i in range(3)])
+
+asyncio.run(main())
+```
+
+**Cross-process** (each process/agent owns its own `MemoryStore`, same file via SQLite WAL):
+
+```python
+# In each subprocess:
+with MemoryStore('shared.db', agent_name='agent-0') as store:
+    store.remember('agent 0 finding')
+    hits = store.recall('finding', limit=10)   # sees all agents' entries
+```
+
+Both shapes are safe: the engine's `threading.Lock` handles intra-process concurrent writes; SQLite WAL mode handles cross-process writes. See `examples/05_multi_agent_shared_memory.py` for a runnable intra-process demo.
+
 ## Configuration
 
 ```

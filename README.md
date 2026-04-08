@@ -222,6 +222,19 @@ export AINGRAM_ONNX_PROVIDER=cuda
 
 ---
 
+## Multi-agent patterns
+
+AIngram supports concurrent multi-agent setups where multiple logical agents share one SQLite memory file. Two shapes work out of the box:
+
+- **Intra-process (simplest):** multiple async tasks share a *single* `MemoryStore` instance. The engine's internal `threading.Lock` serializes writes.
+- **Cross-process (or when you want per-agent attribution):** each agent constructs its own `MemoryStore(db_path, agent_name='agent-N')` pointing at the same `.db` file. SQLite's WAL mode handles multi-writer safety.
+
+See **[`examples/05_multi_agent_shared_memory.py`](examples/05_multi_agent_shared_memory.py)** for a self-contained ~100-line demonstration of the intra-process shape: three async agents share one `MemoryStore` to solve a toy hyperparameter search task, with each agent's `recall()` surfacing sibling findings for piggyback exploration.
+
+For a production-grade multi-agent research integration — including three concurrency modes (mock / solo / swarm), subprocess orchestration with CUDA pinning, workspace isolation, and the full Karpathy `autoresearch` loop wired into AIngram's memory layer — see the companion repo **[bozbuilds/aingram-AR](https://github.com/bozbuilds/aingram-AR)**.
+
+---
+
 ## Install
 
 ```bash
