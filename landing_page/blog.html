@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog — AIngram · Technical deep-dives on AI memory</title>
+    <meta name="description" content="The AIngram blog — technical deep-dives on memory systems, agent architectures, local-first AI, and the engineering behind AIngram.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://aingram.dev/blog">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://aingram.dev/blog">
+    <meta property="og:title" content="The AIngram Blog — AI memory & agent architecture">
+    <meta property="og:description" content="Technical deep-dives on memory systems, agent architectures, and local-first AI from the team behind AIngram.">
+    <meta property="og:site_name" content="AIngram">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="The AIngram Blog — AI memory & agent architecture">
+    <meta name="twitter:description" content="Technical deep-dives on memory systems, agent architectures, and local-first AI.">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <header class="navbar">
+        <a href="/" class="logo">AIngram</a>
+        <nav class="nav-links">
+            <a href="/#features">Lite</a>
+            <a href="/#autoresearch">Autoresearch</a>
+            <a href="/#pro">Pro</a>
+            <a href="/blog" class="nav-active">Blog</a>
+            <a href="https://github.com/bozbuilds/AIngram" class="btn btn-outline">GitHub</a>
+        </nav>
+    </header>
+
+    <main class="blog-main">
+        <div class="blog-header">
+            <div class="blog-header-eyebrow">From the team</div>
+            <h1 class="blog-title">The AIngram Blog</h1>
+            <p class="blog-subtitle">Technical deep-dives on memory systems, agent architectures, and local-first AI.</p>
+        </div>
+
+        <!-- Loading skeletons -->
+        <div id="blog-loading" class="blog-loading-wrap">
+            <div class="skeleton-featured">
+                <div class="skeleton-img"></div>
+                <div class="skeleton-body">
+                    <div class="skeleton-line short"></div>
+                    <div class="skeleton-line long"></div>
+                    <div class="skeleton-line long"></div>
+                    <div class="skeleton-line medium"></div>
+                </div>
+            </div>
+            <div class="blog-grid-wrap">
+                <div class="skeleton-card"><div class="skeleton-img-sm"></div><div class="skeleton-line medium"></div><div class="skeleton-line long"></div><div class="skeleton-line short"></div></div>
+                <div class="skeleton-card"><div class="skeleton-img-sm"></div><div class="skeleton-line medium"></div><div class="skeleton-line long"></div><div class="skeleton-line short"></div></div>
+                <div class="skeleton-card"><div class="skeleton-img-sm"></div><div class="skeleton-line medium"></div><div class="skeleton-line long"></div><div class="skeleton-line short"></div></div>
+            </div>
+        </div>
+
+        <!-- Error state -->
+        <div id="blog-error" class="blog-error-wrap" hidden>
+            <div class="blog-error-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+            <p id="blog-error-msg">Could not load posts. Please try again later.</p>
+            <a href="https://dev.to/bozbuilds" target="_blank" rel="noopener" class="blog-error-link">Read on dev.to →</a>
+        </div>
+
+        <!-- Featured post (injected by blog.js) -->
+        <div id="blog-featured" hidden></div>
+
+        <!-- Posts grid (injected by blog.js) -->
+        <div id="blog-grid-section" hidden>
+            <h2 class="blog-grid-heading">More posts</h2>
+            <div id="blog-grid" class="blog-grid-wrap"></div>
+        </div>
+
+        <!-- Empty state -->
+        <div id="blog-empty" class="blog-empty-wrap" hidden>
+            <p>No posts yet — check back soon.</p>
+        </div>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-logo">AIngram</div>
+            <nav class="footer-links">
+                <a href="https://github.com/bozbuilds/AIngram" target="_blank" rel="noopener">GitHub</a>
+                <a href="https://github.com/bozbuilds/aingram-AR" target="_blank" rel="noopener">aingram-AR</a>
+                <a href="https://discord.gg/zSJCFZnXxf" target="_blank" rel="noopener">Discord</a>
+                <a href="https://aingram.dev" target="_blank" rel="noopener">aingram.dev</a>
+            </nav>
+            <p class="footer-license">Apache-2.0 Licensed.</p>
+        </div>
+    </footer>
+
+    <script src="blog.js"></script>
+</body>
+</html>

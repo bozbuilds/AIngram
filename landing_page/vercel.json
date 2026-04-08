@@ -2,10 +2,16 @@
   "git": {
     "deploymentEnabled": false
   },
+  "buildCommand": "node build.js",
+  "outputDirectory": ".",
   "rewrites": [
     {
       "source": "/v1/telemetry",
       "destination": "/api/telemetry"
+    },
+    {
+      "source": "/blog",
+      "destination": "/blog.html"
     }
   ]
 }

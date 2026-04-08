@@ -3,11 +3,98 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AIngram - Local-first agent memory</title>
+    <title>AIngram — Local-first AI agent memory, zero cloud required</title>
+    <meta name="description" content="AIngram gives AI agents persistent, searchable memory backed by a single SQLite file. Hybrid vector + FTS5 + knowledge graph: 95.5% recall@10 on LongMemEval-S. No cloud, no API keys, no infra.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://aingram.dev/">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://aingram.dev/">
+    <meta property="og:title" content="AIngram — Local-first AI agent memory">
+    <meta property="og:description" content="Give your AI agent persistent, searchable memory. 95.5% recall@10 on LongMemEval-S. One SQLite file. Zero cloud dependencies.">
+    <meta property="og:site_name" content="AIngram">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="AIngram — Local-first AI agent memory">
+    <meta name="twitter:description" content="Give your AI agent persistent, searchable memory. 95.5% recall@10 on LongMemEval-S. One SQLite file. Zero cloud.">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "name": "AIngram",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "Linux, macOS, Windows",
+          "programmingLanguage": "Python",
+          "description": "Local-first memory layer for AI agents featuring hybrid vector + FTS5 + knowledge graph search. 95.5% recall@10 on LongMemEval-S. No cloud required — one SQLite file.",
+          "url": "https://aingram.dev",
+          "downloadUrl": "https://pypi.org/project/aingram/",
+          "softwareVersion": "1.1.0",
+          "license": "https://www.apache.org/licenses/LICENSE-2.0",
+          "codeRepository": "https://github.com/bozbuilds/AIngram",
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+        },
+        {
+          "@type": "Organization",
+          "name": "AIngram",
+          "url": "https://aingram.dev",
+          "sameAs": [
+            "https://github.com/bozbuilds/AIngram",
+            "https://discord.gg/zSJCFZnXxf",
+            "https://pypi.org/project/aingram/"
+          ]
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What is AIngram?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "AIngram is an open-source Python library that gives AI agents persistent, searchable memory backed by a local SQLite file. It combines FTS5 keyword search, dense vector search, and knowledge graph traversal fused via Reciprocal Rank Fusion, achieving 95.5% recall@10 on the LongMemEval-S benchmark. No cloud service, no managed infrastructure, and no API keys are required."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Does AIngram require a GPU or cloud service?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. AIngram runs entirely on your local machine. Embeddings use a quantized ONNX model (Nomic MiniLM, 768-dim) that runs on CPU. The database is a single portable .db file — no server, no Docker, no cloud account. A GPU is optional and only relevant when using the aingram-AR autoresearch scaffolding in swarm mode."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How does AIngram compare to Pinecone, Chroma, or Weaviate?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Managed vector databases like Pinecone require cloud infrastructure, API keys, and ongoing costs. AIngram stores everything in a single SQLite file on disk, optimized for agent memory workloads (thousands to low millions of entries). In exchange for scale limits, you get zero remote latency, tamper-evident Ed25519 signing, full-text search, a knowledge graph, and zero deployment overhead. AIngram Pro extends this to ~1M entries with GPU-resident caching at 200x the speed of standard vector search."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What AI frameworks and tools does AIngram integrate with?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "AIngram ships with native adapters for LangChain, CrewAI, LangGraph, AutoGen, and smolagents. It also includes a built-in MCP server compatible with Claude Desktop, Cursor, and Cline — allowing any MCP-compatible AI tool to call remember and recall without writing Python. Install with: pip install aingram"
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How accurate is AIngram's memory recall?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "AIngram achieves 95.5% recall@10 on LongMemEval-S, the most rigorous publicly available AI memory benchmark, with a median query latency of 22ms. The hybrid retrieval pipeline — combining FTS5, dense vector search, and knowledge graph traversal via Reciprocal Rank Fusion — consistently outperforms any single retrieval method on multi-hop and temporally complex queries."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
 </head>
 <body>
     <div class="blob blob-1"></div>
@@ -17,7 +104,9 @@
         <div class="logo">AIngram</div>
         <nav class="nav-links">
             <a href="#features">Lite</a>
+            <a href="#autoresearch">Autoresearch</a>
             <a href="#pro">Pro</a>
+            <a href="/blog">Blog</a>
             <a href="https://github.com/bozbuilds/AIngram" class="btn btn-outline">GitHub</a>
         </nav>
     </header>
@@ -35,6 +124,22 @@
                         <button class="copy-btn" id="copyBtn" aria-label="Copy command">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                         </button>
+                    </div>
+                    <div class="hero-stats">
+                        <div class="stat-pill">
+                            <span class="stat-value">95.5%</span>
+                            <span class="stat-label">recall@10 · LongMemEval-S</span>
+                        </div>
+                        <div class="stat-divider"></div>
+                        <div class="stat-pill">
+                            <span class="stat-value">22ms</span>
+                            <span class="stat-label">median latency</span>
+                        </div>
+                        <div class="stat-divider"></div>
+                        <div class="stat-pill">
+                            <span class="stat-value">1 file</span>
+                            <span class="stat-label">zero infra</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -62,22 +167,101 @@
                 <div class="feature-card">
                     <div class="icon">📁</div>
                     <h3>One SQLite File</h3>
-                    <p>Zero cloud dependencies. Everything is stored in a single SQLite database. Portable and local-first.</p>
+                    <p>Zero cloud dependencies. Entries, embeddings, entity graph, and signing chain — all in a single portable database file.</p>
                 </div>
                 <div class="feature-card">
                     <div class="icon">🔍</div>
-                    <h3>Hybrid Search</h3>
-                    <p>Combines vector embeddings with FTS5 text search for highly accurate, state-of-the-art recall.</p>
+                    <h3>Triple-Signal Recall</h3>
+                    <p>FTS5 keyword search, dense vector search, and knowledge graph traversal fused via Reciprocal Rank Fusion. <strong>95.5% recall@10</strong> on LongMemEval-S.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">⚡</div>
+                    <h3>QJL Two-Pass Search</h3>
+                    <p>1-bit Quantized Johnson-Lindenstrauss codes for coarse Hamming KNN, then float32 re-rank on survivors. Keeps latency flat as your corpus grows.</p>
                 </div>
                 <div class="feature-card">
                     <div class="icon">🕸️</div>
-                    <h3>Knowledge Graphs</h3>
-                    <p>Built-in entity and relationship extraction. Connect the dots across disparate memories automatically.</p>
+                    <h3>Knowledge Graph</h3>
+                    <p>GLiNER-based entity and relationship extraction, stored in-DB. Multi-hop graph queries via CTE. "What did Alice decide?" resolved without exact text match.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔐</div>
+                    <h3>Cryptographic Integrity</h3>
+                    <p>Every entry is Ed25519-signed and linked in a tamper-evident hash chain. Shared memory between agents stays verifiable.</p>
                 </div>
                 <div class="feature-card">
                     <div class="icon">🚀</div>
-                    <h3>MCP Ready</h3>
-                    <p>Includes an optional MCP server out of the box (FastMCP). Plug into your whole ecosystem seamlessly.</p>
+                    <h3>MCP + Integrations</h3>
+                    <p>Built-in MCP server for Claude, Cursor, and Cline. Native adapters for LangChain, CrewAI, LangGraph, AutoGen, and smolagents.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="autoresearch-section" id="autoresearch">
+            <div class="ar-container">
+                <div class="ar-eyebrow">
+                    <span class="ar-badge">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+                        bozbuilds/aingram-AR
+                    </span>
+                </div>
+                <h2 class="ar-title">Built for Autoresearch Loops</h2>
+                <p class="ar-subtitle">A companion scaffolding that wires AIngram's shared memory layer into Karpathy-style autoresearch training loops — so multiple agents can explore the hyperparameter space concurrently and piggyback on each other's findings in real time.</p>
+
+                <div class="ar-modes">
+                    <div class="ar-mode-card">
+                        <div class="ar-mode-tag mock">MOCK</div>
+                        <h4>30-Second Demo</h4>
+                        <p>N agents, M iterations, no GPU. Uses deterministic mock training to demonstrate the piggyback recall pattern. Runs in CI — no model download required.</p>
+                        <div class="ar-mode-cmd">
+                            <span class="ar-prompt">$</span>
+                            <code>swarm --mode mock --agents 3 --iterations 5</code>
+                        </div>
+                    </div>
+                    <div class="ar-mode-card">
+                        <div class="ar-mode-tag solo">SOLO</div>
+                        <h4>Longitudinal Single-Agent</h4>
+                        <p>One agent, many iterations, one GPU. The full training loop writing real findings to AIngram. Accumulates knowledge across runs — each session recalls previous sessions.</p>
+                        <div class="ar-mode-cmd">
+                            <span class="ar-prompt">$</span>
+                            <code>solo --iterations 50 --profile optimizer-explorer</code>
+                        </div>
+                    </div>
+                    <div class="ar-mode-card">
+                        <div class="ar-mode-tag swarm">SWARM</div>
+                        <h4>Multi-GPU Parallel Search</h4>
+                        <p>N agents as subprocesses, each pinned to a GPU, each with its own workspace copy. All writing to the same AIngram DB. Finds optima faster via parallel divergent exploration.</p>
+                        <div class="ar-mode-cmd">
+                            <span class="ar-prompt">$</span>
+                            <code>swarm --mode swarm --agents 4 --gpus 0,1,2,3</code>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ar-code-block">
+                    <div class="ar-code-header">
+                        <span class="ar-code-label">Per-iteration loop — identical across all three modes</span>
+                    </div>
+                    <pre class="ar-code"><span class="kw">for</span> iteration <span class="kw">in</span> range(iterations):
+    <span class="cm"># Recall sibling findings — piggyback on what other agents already learned</span>
+    hits = store.recall(profile.focus_context + recent_hypothesis, limit=<span class="nm">5</span>)
+
+    <span class="cm"># Propose a hypothesis biased toward profile.mutable_fields + sibling wins</span>
+    hypothesis = propose_hypothesis(profile, recall_hits=hits, current_state=state)
+
+    <span class="cm"># Train (mock_train() in mock/solo modes, real nanochat in swarm)</span>
+    result = mock_train(hypothesis, seed=seed + iteration)
+
+    <span class="cm"># Persist the finding — all agents read each other's entries on next recall()</span>
+    store.remember(format_finding(hypothesis, result), metadata={<span class="st">'status'</span>: <span class="st">'keep'</span>})</pre>
+                </div>
+
+                <div class="ar-cta">
+                    <a href="https://github.com/bozbuilds/aingram-AR" class="ar-github-btn" target="_blank" rel="noopener">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                        View on GitHub
+                    </a>
+                    <span class="ar-note">Open-source · Apache-2.0 · Works with any AIngram ≥ 1.1.0</span>
                 </div>
             </div>
         </section>
@@ -191,12 +375,45 @@
                 </div>
             </div>
         </section>
+        <section class="faq-section" id="faq">
+            <div class="faq-container">
+                <h2 class="section-title">Frequently asked questions</h2>
+                <div class="faq-list">
+                    <details class="faq-item">
+                        <summary class="faq-question">What is AIngram?</summary>
+                        <p class="faq-answer">AIngram is an open-source Python library that gives AI agents persistent, searchable memory backed by a local SQLite file. It combines FTS5 keyword search, dense vector search, and knowledge graph traversal fused via Reciprocal Rank Fusion — achieving <strong>95.5% recall@10 on LongMemEval-S</strong>. No cloud service, no managed infrastructure, no API keys required.</p>
+                    </details>
+                    <details class="faq-item">
+                        <summary class="faq-question">Does AIngram require a GPU or cloud service?</summary>
+                        <p class="faq-answer">No. AIngram runs entirely on your local machine. Embeddings use a quantized ONNX model (Nomic MiniLM, 768-dim) that runs on CPU. The database is a single portable <code>.db</code> file — no server, no Docker, no cloud account. A GPU is optional and only relevant when using the aingram-AR autoresearch scaffolding in swarm mode.</p>
+                    </details>
+                    <details class="faq-item">
+                        <summary class="faq-question">How does AIngram compare to Pinecone, Chroma, or Weaviate?</summary>
+                        <p class="faq-answer">Managed vector databases require cloud infrastructure, API keys, and ongoing costs. AIngram stores everything in a single SQLite file on disk, optimized for agent memory workloads (thousands to low millions of entries). You get zero remote latency, tamper-evident Ed25519 signing, full-text search, and a knowledge graph — all with zero deployment overhead. AIngram Pro extends this to ~1M entries with GPU-resident caching at <strong>200x the speed</strong> of standard vector search.</p>
+                    </details>
+                    <details class="faq-item">
+                        <summary class="faq-question">What AI frameworks and tools does AIngram integrate with?</summary>
+                        <p class="faq-answer">AIngram ships with native adapters for <strong>LangChain, CrewAI, LangGraph, AutoGen, and smolagents</strong>. It also includes a built-in MCP server compatible with Claude Desktop, Cursor, and Cline — allowing any MCP-compatible AI tool to call <code>remember</code> and <code>recall</code> without writing Python. Install with <code>pip install aingram</code> and drop it into your existing agent stack.</p>
+                    </details>
+                    <details class="faq-item">
+                        <summary class="faq-question">How accurate is AIngram's memory recall?</summary>
+                        <p class="faq-answer">AIngram achieves <strong>95.5% recall@10 on LongMemEval-S</strong>, the most rigorous publicly available AI memory benchmark, with a median query latency of 22ms. The hybrid retrieval pipeline — FTS5 + dense vector search + knowledge graph traversal via Reciprocal Rank Fusion — consistently outperforms any single retrieval method on multi-hop and temporally complex queries.</p>
+                    </details>
+                </div>
+            </div>
+        </section>
     </main>
 
     <footer>
         <div class="footer-content">
             <div class="footer-logo">AIngram</div>
-            <p>Apache-2.0 Licensed.</p>
+            <nav class="footer-links">
+                <a href="https://github.com/bozbuilds/AIngram" target="_blank" rel="noopener">GitHub</a>
+                <a href="https://github.com/bozbuilds/aingram-AR" target="_blank" rel="noopener">aingram-AR</a>
+                <a href="https://discord.gg/zSJCFZnXxf" target="_blank" rel="noopener">Discord</a>
+                <a href="https://aingram.dev" target="_blank" rel="noopener">aingram.dev</a>
+            </nav>
+            <p class="footer-license">Apache-2.0 Licensed.</p>
         </div>
     </footer>
     <script src="script.js"></script>
