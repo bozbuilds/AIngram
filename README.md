@@ -17,7 +17,7 @@ Most AI memory systems are filing cabinets with a search bar. Store everything, 
 
 Aingram is different. It runs **three retrieval signals simultaneously** — full-text search, semantic vector search, and knowledge graph traversal — and fuses them into a single ranked result using Reciprocal Rank Fusion. Everything lives in **one SQLite file** on your machine. No cloud. No API key. No vendor to trust with your agents' memory.
 
-On LongMemEval — the most rigorous public benchmark for AI memory — Aingram's retrieval pipeline finds the correct context in the top 3 results **for every single query** when the evidence is present. On the real benchmark with full noisy conversation histories, it surfaces the right sessions in the top 10 for **95.5% of queries**.
+On LongMemEval — the most rigorous public benchmark for AI memory — Aingram's retrieval pipeline finds the correct context in the top 3 results **for every single query** when the evidence is present. On the real benchmark with full noisy conversation histories, it surfaces the right sessions in the top 10 for **95.5% of queries**. End-to-end answer accuracy (retrieval → gpt-4o-mini) reaches **72.8%** across all question types.
 
 ```python
 from aingram import MemoryStore
@@ -51,6 +51,22 @@ Benchmarked on [LongMemEval](https://github.com/xiaowu0162/LongMemEval) (Wu et a
 - **recall_any@3 = 1.000 (oracle):** When the evidence exists, Aingram puts the right session in the top 3 results for every query across 500 instances. The correct context is always available to your agent.
 - **recall_any@10 = 0.955 (real):** On real noisy conversation histories — ~40 sessions of noise per query — the right sessions appear in the top 10 for 95.5% of queries. This sets the ceiling for any downstream LLM accuracy.
 - **22ms median retrieval latency** — pure local pipeline, no network round-trip.
+
+### End-to-end answer accuracy (LongMemEval-S)
+
+Full pipeline accuracy: AIngram retrieval → gpt-4o-mini answering 500 questions across multi-session conversation histories. All categories use gpt-4o-mini for clean comparability to published baselines.
+
+| Question Type | Correct | Total | Accuracy |
+|---|---|---|---|
+| single-session-user | 66 | 70 | **94.3%** |
+| knowledge-update | 65 | 78 | **83.3%** |
+| multi-session | 102 | 133 | **76.7%** |
+| temporal-reasoning | 80 | 133 | **60.2%** |
+| single-session-preference | 18 | 30 | **60.0%** |
+| single-session-assistant | 33 | 56 | **58.9%** |
+| **Overall** | **364** | **500** | **72.8%** |
+
+> ⚠️ **Temporal-reasoning note:** The 60.2% figure uses gpt-4o-mini throughout — this is the clean comparable to published baselines. Running that category with gpt-4o yields **98/133 (73.7%)**, a +13.5pp improvement, and pushes overall accuracy to 76.4% (382/500). That score is not directly comparable to published gpt-4o-mini baselines.
 
 Retrieval speed scales with corpus size. Vector search is the dominant cost at scale — Aingram's QJL two-pass compression keeps it manageable:
 
