@@ -51,17 +51,14 @@ class DeBERTaContradictionClassifier:
     def classify(self, text_a: str, text_b: str) -> ContradictionVerdict:
         self._ensure_loaded()
         encoding = self._tokenizer.encode(text_a, text_b)
-        input_ids = np.array([encoding.ids], dtype=np.int64)
-        attention_mask = np.array([encoding.attention_mask], dtype=np.int64)
-        token_type_ids = np.array([encoding.type_ids], dtype=np.int64)
-        logits = self._session.run(
-            None,
-            {
-                'input_ids': input_ids,
-                'attention_mask': attention_mask,
-                'token_type_ids': token_type_ids,
-            },
-        )[0][0]
+        available = {
+            'input_ids': np.array([encoding.ids], dtype=np.int64),
+            'attention_mask': np.array([encoding.attention_mask], dtype=np.int64),
+            'token_type_ids': np.array([encoding.type_ids], dtype=np.int64),
+        }
+        expected = {inp.name for inp in self._session.get_inputs()}
+        feed = {k: v for k, v in available.items() if k in expected}
+        logits = self._session.run(None, feed)[0][0]
         probs = _softmax(logits)
         contradiction_prob = float(probs[2])  # index 2 = contradiction
         return ContradictionVerdict(

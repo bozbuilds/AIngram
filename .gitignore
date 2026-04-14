@@ -49,6 +49,7 @@ docs/
 # means this entry also matches CLAUDE.md (intentional).
 claude.md
 .claude/settings.local.json
+deberta-nli-onnx/
 
 # Model weights — never commit
 *.pt

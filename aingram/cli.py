@@ -373,7 +373,7 @@ def capture_status() -> None:
 
 @capture_app.command('on')
 def capture_on(
-    tools: list[str] = typer.Argument(default_factory=list),
+    tools: list[str] | None = typer.Argument(default=None),
 ) -> None:
     """Enable capture for tools."""
     _set_capture_toggles(tools, 'on')
@@ -381,7 +381,7 @@ def capture_on(
 
 @capture_app.command('off')
 def capture_off(
-    tools: list[str] = typer.Argument(default_factory=list),
+    tools: list[str] | None = typer.Argument(default=None),
 ) -> None:
     """Disable capture for tools."""
     _set_capture_toggles(tools, 'off')
