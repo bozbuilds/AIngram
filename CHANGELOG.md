@@ -2,9 +2,11 @@
 
 ## Unreleased
 
+- **Capture daemon:** opt-in local HTTP daemon (`aingram[capture]`) that captures prompt/response pairs from seven AI coding tools (Claude Code, Cursor, Gemini CLI, Aider, Copilot, Cline, ChatGPT) and writes them into AIngram memory. Includes per-tool adapters, `@nocapture` opt-out, secret redaction, toggle system, and CLI subcommands (`aingram capture start|stop|status|on|off|install`). Disabled by default; configure via `[capture]` in `config.toml` or `AINGRAM_CAPTURE_ENABLED` env var.
+- **Config:** `AIngramConfig` extended with `capture: CaptureConfig | None` field; `_merge_toml_into()` parses `[capture]` TOML sections; `_merge_env_into()` reads `AINGRAM_CAPTURE_ENABLED` and `AINGRAM_CAPTURE_PORT`.
 - **Multi-agent example:** `examples/05_multi_agent_shared_memory.py` — self-contained ~100-line demo of three async agents sharing one `MemoryStore` for concurrent hyperparameter exploration with piggyback recall.
 - **Example smoke test:** `tests/test_examples.py` added to CI matrix; guards example scripts against bit-rot.
-- **README:** new "Multi-agent patterns" section documenting the intra-process (shared instance) and cross-process (per-agent `MemoryStore`) concurrency shapes, with a pointer to the `bozbuilds/aingram-AR` companion repo for the full autoresearch integration.
+- **README:** new "Multi-agent patterns" and "Capture Daemon" sections; updated install extras to include `[capture]`.
 - **Fix:** `aingram.__version__` corrected from `'1.0.0'` to `'1.1.0'` (was not bumped alongside `pyproject.toml` in the 1.1.0 release).
 
 ## 1.1.0

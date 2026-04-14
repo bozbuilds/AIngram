@@ -11,12 +11,13 @@ pip install aingram                         # core
 pip install "aingram[mcp]"                  # + MCP server
 pip install "aingram[extraction]"           # + local entity extraction (GLiNER)
 pip install "aingram[api]"                  # + Anthropic API (Sonnet extractor)
+pip install "aingram[capture]"              # + capture daemon (starlette, uvicorn, watchdog)
 pip install "aingram[langchain]"            # + LangChain adapter
 pip install "aingram[crewai]"               # + CrewAI adapter
 pip install "aingram[langgraph]"            # + LangGraph adapter
 pip install "aingram[autogen]"              # + AutoGen adapter
 pip install "aingram[smolagents]"           # + smolagents adapter
-pip install "aingram[all]"                  # all optional extras
+pip install "aingram[all]"                  # all optional extras (except capture and gpu)
 ```
 
 ## Core Python API
@@ -94,9 +95,6 @@ mem.consolidate()
 mem.compact(*, confirm: bool, target_dim: int)
 # One-way Matryoshka embedding truncation. Requires confirm=True.
 
-mem.quantize(*, confirm: bool)
-# One-way uint8 quantization (~4x storage reduction). Requires confirm=True.
-
 mem.export_json(path)
 # Export full database to JSON.
 
@@ -125,7 +123,6 @@ entities [--limit N]              list known entities
 graph NAME                        expand entity relationships in the knowledge graph
 consolidate                       run memory consolidation (decay, merge, synthesis)
 compact --target-dim N --yes      truncate embeddings to N dims (one-way, Matryoshka)
-quantize [--yes] [--rebuild]      uint8 quantize embeddings or rebuild float32 cache
 watch [--json]                    live tail new entries (Ctrl+C to stop)
 viz [--port N] [--no-open]        start local visualization server (default port: 8420)
 export PATH [--agent NAME]        export database to JSON
@@ -133,6 +130,12 @@ import PATH [--merge]             import from JSON export
 agent create NAME [--role ROLE]   create agent bearer token (role: reader|contributor|admin)
 agent list                        list all agents and their roles
 agent revoke NAME                 revoke an agent token
+capture start [--port N] [-d]     start the capture daemon (foreground or background)
+capture stop                      stop the capture daemon
+capture status                    show daemon status, tool toggles, and queue depth
+capture on [TOOLS...]             enable capture for tools (all if omitted)
+capture off [TOOLS...]            disable capture for tools (all if omitted)
+capture install TOOL              print hook setup instructions for a tool
 ```
 
 ## Framework Integrations
@@ -234,6 +237,8 @@ Environment variables (all optional):
   AINGRAM_WORKER_ENABLED            true | false (default: true)
   AINGRAM_CONSOLIDATION_INTERVAL    seconds between auto-consolidation runs (default: unset)
   AINGRAM_FTS_PREFILTER_THRESHOLD   min FTS candidates before filtered vector search (default: 50)
+  AINGRAM_CAPTURE_ENABLED           true | false (default: false) — enable capture daemon
+  AINGRAM_CAPTURE_PORT              int (default: 7749) — capture daemon port
 ```
 
 Config file: `~/.aingram/config.toml` — same keys as env vars, without the `AINGRAM_` prefix:
@@ -243,6 +248,18 @@ log_level = "DEBUG"
 extractor_mode = "local"
 llm_url = "http://localhost:11434"
 fts_prefilter_threshold = 100
+
+[capture]
+enabled = true
+port = 7749
+memory_mode = "unified"          # "unified" or "isolated" (per-tool containers)
+
+[capture.tools.claude_code]
+enabled = true
+container_tag = "claude_code"
+
+[capture.tools.chatgpt]
+enabled = false
 ```
 
 ## Optional: more detail

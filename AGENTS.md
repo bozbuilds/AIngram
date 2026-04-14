@@ -43,6 +43,13 @@ ruff format .             # format
 | `aingram/worker.py` | Background task queue processor (entity extraction jobs). |
 | `aingram/config.py` | `AIngramConfig` — layered config (kwargs > env > TOML > defaults). |
 | `aingram/mcp_server.py` | MCP server for Claude/Cursor tool integration. |
+| `aingram/capture/` | Opt-in capture daemon for AI coding tools. Separate SQLite queue, per-tool adapters, filter pipeline, drain thread. |
+| `aingram/capture/daemon.py` | Starlette HTTP app, `create_app()` factory, `run_daemon()` entry point with uvicorn. |
+| `aingram/capture/queue.py` | `CaptureQueue` — thread-safe SQLite WAL wrapper for `capture_queue.db`. |
+| `aingram/capture/drain.py` | `CaptureDrain` — background thread that dequeues records and calls `MemoryStore.remember()`. |
+| `aingram/capture/adapters/` | Per-tool adapters: Claude Code, Cursor, Gemini, Aider, Copilot, Cline, ChatGPT. |
+| `aingram/capture/filters.py` | `apply_filters()` — `@nocapture` opt-out, secret redaction, container tag resolution. |
+| `aingram/capture/config.py` | `CaptureConfig`, `ToolConfig`, `AiderToolConfig`, `ChatGPTToolConfig`. |
 | `aingram/types.py` | All public dataclasses and enums. |
 | `aingram/exceptions.py` | Exception hierarchy. |
 

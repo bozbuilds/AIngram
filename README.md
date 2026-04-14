@@ -135,11 +135,7 @@ Every memory entry is Ed25519-signed and linked in a tamper-evident hash chain. 
 
 ```python
 result = mem.verify()
-# {'chain_valid': True, 'entries_verified': 1247, 'broken_at': None}
-```
-
-```bash
-aingram --db ./agent_memory.db verify
+# VerificationResult(valid=True, session_id='...', entries_checked=1247, errors=[])
 ```
 
 ---
@@ -224,7 +220,6 @@ aingram --db ./agent_memory.db entities
 aingram --db ./agent_memory.db graph "Alice"
 aingram --db ./agent_memory.db export ./backup.json
 aingram --db ./agent_memory.db import ./backup.json
-aingram --db ./agent_memory.db verify
 ```
 
 **GPU embeddings (optional):**
@@ -260,8 +255,27 @@ pip install "aingram[mcp]"            # + MCP server
 pip install "aingram[llm]"            # + Ollama/local LLM client
 pip install "aingram[api]"            # + Anthropic API extractor
 pip install "aingram[gpu]"            # + CUDA ONNX Runtime wheels
-pip install "aingram[all]"            # everything
+pip install "aingram[capture]"        # + capture daemon (starlette, uvicorn, watchdog)
+pip install "aingram[all]"            # everything (except capture and gpu)
 ```
+
+---
+
+## Capture Daemon
+
+Install `aingram[capture]` to enable automatic prompt/response capture from AI coding tools. The daemon runs locally on `localhost:7749` and supports Claude Code, Cursor, Gemini CLI, Aider, Copilot, Cline, and ChatGPT (manual export).
+
+```bash
+aingram capture start                 # foreground mode
+aingram capture start --daemon        # background mode
+aingram capture stop                  # stop the daemon
+aingram capture status                # show tool status and queue depth
+aingram capture install claude_code   # print hook setup instructions
+aingram capture on                    # enable all tools
+aingram capture off cursor            # disable a specific tool
+```
+
+Captured interactions flow through a filter pipeline (`@nocapture` opt-out, secret redaction) into a separate SQLite queue, then drain into your main memory database via `MemoryStore.remember()`. Configure via `[capture]` in `~/.aingram/config.toml` or `AINGRAM_CAPTURE_ENABLED` / `AINGRAM_CAPTURE_PORT` env vars. Disabled by default.
 
 ---
 
