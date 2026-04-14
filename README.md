@@ -142,7 +142,7 @@ result = mem.verify()
 
 ## Entity Extraction and Knowledge Graph
 
-Install `aingram[extraction]` to enable [GLiNER](https://github.com/urchade/GLiNER)-based entity extraction. Entities and relationships are automatically extracted from memory entries and stored in the knowledge graph as you write.
+Install `aingram[extraction]` to enable [GLiNER](https://github.com/urchade/GLiNER)-based entity extraction. Aingram uses the [GLiNER multitask-large](https://huggingface.co/knowledgator/gliner-multitask-large-v0.5) model — a 205M-parameter multitask model that handles person, organization, location, project, and technology extraction in a single pass. Entities and relationships are automatically extracted from memory entries and stored in the knowledge graph as you write.
 
 ```python
 # After 'User Alice approved the migration to Clerk on Jan 15.'
@@ -161,6 +161,32 @@ Query the graph directly:
 aingram --db ./agent_memory.db graph "Alice"
 aingram --db ./agent_memory.db entities
 ```
+
+---
+
+## Memory Consolidation
+
+Run `aingram consolidate` (or `mem.consolidate()`) to clean up accumulated memory over time. Consolidation runs four steps:
+
+1. **Decay** — reduces the importance score of memories that haven't been accessed recently (always active, no configuration needed)
+2. **Contradiction detection** — finds pairs of memories about the same entity that say conflicting things and marks the older one as superseded
+3. **Merge** — clusters near-duplicate memories and synthesizes a single canonical entry (requires Ollama)
+4. **Knowledge synthesis** — summarizes chains of related observations into higher-level conclusions (requires Ollama)
+
+**Contradiction detection** is powered by a local DeBERTa-v3 NLI model running via ONNX Runtime — no LLM or network call required at inference time. Enable it in `~/.aingram/config.toml`:
+
+```toml
+contradiction_backend = "deberta"   # or "llm" to use Ollama instead
+contradiction_threshold = 0.7       # confidence cutoff (0.0–1.0)
+```
+
+The DeBERTa model (~740MB) downloads from HuggingFace on first use and caches locally. For contradiction detection to work, entity extraction must have been run on your memories (`aingram[extraction]` required) so entries can be grouped by the entities they mention.
+
+```bash
+aingram consolidate        # run all steps, print JSON summary
+```
+
+**Capture daemon auto-consolidation:** if the capture daemon is running, it can trigger consolidation automatically every N ingested memories. Set `consolidation_interval_records` in the `[capture]` section of your config (default: 50, set to 0 to disable).
 
 ---
 
@@ -292,9 +318,11 @@ Precedence: constructor kwargs → env vars → `~/.aingram/config.toml` → def
 | `AINGRAM_ONNX_PROVIDER` | auto | `cpu`, `cuda`, or `npu` |
 | `AINGRAM_EXTRACTOR_MODE` | `none` | `none`, `local`, or `sonnet` |
 | `AINGRAM_WORKER_ENABLED` | `true` | Background consolidation worker |
+| `AINGRAM_CONTRADICTION_BACKEND` | `none` | `none`, `deberta`, or `llm` |
+| `AINGRAM_CONTRADICTION_THRESHOLD` | `0.7` | DeBERTa confidence cutoff (0.0–1.0) |
 | `AINGRAM_TELEMETRY_ENABLED` | `true` | Anonymous CLI usage (opt-out below) |
 
-`~/.aingram/config.toml` example:
+`~/.aingram/config.toml` example (note: flat keys, no section header for core settings):
 
 ```toml
 embedding_dim = 768
@@ -302,7 +330,12 @@ worker_enabled = true
 llm_url = "http://localhost:11434"
 llm_model = "mistral"
 extractor_mode = "local"
+contradiction_backend = "deberta"
+contradiction_threshold = 0.7
 telemetry_enabled = false
+
+[capture]
+consolidation_interval_records = 50
 ```
 
 ---

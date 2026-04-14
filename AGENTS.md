@@ -31,10 +31,12 @@ ruff format .             # format
 | `aingram/storage/queries.py` | Shared query utilities (reciprocal rank fusion, etc.). |
 | `aingram/trust/` | Ed25519 signing, verification, content hashing, RFC-8785 canonicalization. |
 | `aingram/trust/session.py` | `SessionManager` — per-session Ed25519 keypair and sequence counter. |
-| `aingram/processing/` | `NomicEmbedder` — ONNX inference for vector embeddings. |
+| `aingram/processing/` | `NomicEmbedder` (ONNX embeddings), `GlinerExtractor` (GLiNER2 multitask-large NER), `protocols.py` (`ContradictionClassifier`, `EntityExtractor`, `LLMProcessor` protocols). |
 | `aingram/models/` | `ModelManager` — ONNX model file download and caching. |
 | `aingram/extraction/` | Entity/relationship extraction (local LLM via Ollama, or Anthropic Sonnet). |
 | `aingram/consolidation/` | Memory consolidation: decay, merge, contradiction detection, knowledge synthesis. |
+| `aingram/consolidation/deberta.py` | `DeBERTaContradictionClassifier` — lazy-loaded DeBERTa-v3 NLI ONNX model for local contradiction detection. Implements `ContradictionClassifier` protocol. |
+| `aingram/consolidation/contradiction.py` | `ContradictionDetector` orchestrator (entity grouping, pair iteration, recency fallback). `LLMContradictionClassifier` wraps `LLMProcessor` as a classifier. |
 | `aingram/graph/` | Knowledge graph traversal for graph-augmented recall. |
 | `aingram/integrations/` | Thin adapters: LangChain, CrewAI, LangGraph, AutoGen, smolagents. |
 | `aingram/viz/` | Local HTTP visualization server (`aingram viz`). |
@@ -46,7 +48,7 @@ ruff format .             # format
 | `aingram/capture/` | Opt-in capture daemon for AI coding tools. Separate SQLite queue, per-tool adapters, filter pipeline, drain thread. |
 | `aingram/capture/daemon.py` | Starlette HTTP app, `create_app()` factory, `run_daemon()` entry point with uvicorn. |
 | `aingram/capture/queue.py` | `CaptureQueue` — thread-safe SQLite WAL wrapper for `capture_queue.db`. |
-| `aingram/capture/drain.py` | `CaptureDrain` — background thread that dequeues records and calls `MemoryStore.remember()`. |
+| `aingram/capture/drain.py` | `CaptureDrain` — background thread that dequeues records and calls `MemoryStore.remember()`. Triggers `store.consolidate()` automatically every `consolidation_interval_records` successfully drained records. |
 | `aingram/capture/adapters/` | Per-tool adapters: Claude Code, Cursor, Gemini, Aider, Copilot, Cline, ChatGPT. |
 | `aingram/capture/filters.py` | `apply_filters()` — `@nocapture` opt-out, secret redaction, container tag resolution. |
 | `aingram/capture/config.py` | `CaptureConfig`, `ToolConfig`, `AiderToolConfig`, `ChatGPTToolConfig`. |
@@ -78,6 +80,10 @@ ruff format .             # format
 **FTS pre-filter architecture.** sqlite-vec's `vec0` virtual table cannot combine KNN `MATCH` with `IN` for candidate filtering. The workaround: fetch float32 blobs via a regular `IN` query on `vec_entries`, then compute cosine similarity in Python. This is the `search_vectors_filtered()` path.
 
 **QJL two-pass search.** `vec_entries` holds float32 embeddings. `vec_entries_qjl` stores 1-bit QJL codes for Hamming KNN as a coarse filter when entry count ≥ 25k; `recall()` then re-ranks with `search_vectors_filtered()` on the candidate set. `compact()` truncates float rows and rebuilds the QJL table for the new dimension.
+
+**Contradiction detection strategy pattern.** `ContradictionDetector` is decoupled from classification via the `ContradictionClassifier` protocol (`classify(text_a, text_b) -> ContradictionVerdict`). Two implementations: `DeBERTaContradictionClassifier` (local ONNX, no LLM) and `LLMContradictionClassifier` (Ollama). `_build_contradiction_classifier(config)` in `store.py` instantiates the right one based on `config.contradiction_backend`. When `superseded_index is None` in the verdict (DeBERTa path), the orchestrator applies a recency fallback: the older entry by `created_at` is marked superseded.
+
+**`config.toml` format.** Top-level config keys are flat — no section header for core `AIngramConfig` fields. The `[capture]` section is the only named section parsed by `_merge_toml_into`. Writing `[aingram]` as a header silently ignores everything under it.
 
 **Layered configuration.** `AIngramConfig` merges in priority order: constructor kwargs (highest) → env vars → `~/.aingram/config.toml` → dataclass defaults (lowest). Library users override with kwargs; CLI users use env vars; power users configure via TOML.
 

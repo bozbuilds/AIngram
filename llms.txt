@@ -89,8 +89,10 @@ mem.complete_chain(chain_id, *, outcome)
 mem.reference(*, source_id, target_id, reference_type)
 # Cross-reference two entries. reference_type: builds_on|contradicts|supports|refines|supersedes
 
-mem.consolidate()
-# Run decay + merge + contradiction detection + knowledge synthesis.
+mem.consolidate(*, llm=None)
+# Run decay + contradiction detection + merge + knowledge synthesis.
+# Contradiction backend is set via config (contradiction_backend = "deberta"|"llm"|"none").
+# llm= kwarg overrides config for the contradiction/merge/synthesis steps (legacy path).
 
 mem.compact(*, confirm: bool, target_dim: int)
 # One-way Matryoshka embedding truncation. Requires confirm=True.
@@ -237,6 +239,8 @@ Environment variables (all optional):
   AINGRAM_WORKER_ENABLED            true | false (default: true)
   AINGRAM_CONSOLIDATION_INTERVAL    seconds between auto-consolidation runs (default: unset)
   AINGRAM_FTS_PREFILTER_THRESHOLD   min FTS candidates before filtered vector search (default: 50)
+  AINGRAM_CONTRADICTION_BACKEND     none | deberta | llm (default: none)
+  AINGRAM_CONTRADICTION_THRESHOLD   float 0.0–1.0 DeBERTa confidence cutoff (default: 0.7)
   AINGRAM_CAPTURE_ENABLED           true | false (default: false) — enable capture daemon
   AINGRAM_CAPTURE_PORT              int (default: 7749) — capture daemon port
 ```
@@ -248,11 +252,14 @@ log_level = "DEBUG"
 extractor_mode = "local"
 llm_url = "http://localhost:11434"
 fts_prefilter_threshold = 100
+contradiction_backend = "deberta"   # none | deberta | llm
+contradiction_threshold = 0.7
 
 [capture]
 enabled = true
 port = 7749
 memory_mode = "unified"          # "unified" or "isolated" (per-tool containers)
+consolidation_interval_records = 50  # auto-consolidate every N drained records (0 = disabled)
 
 [capture.tools.claude_code]
 enabled = true
