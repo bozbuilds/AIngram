@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.2.1
+
+Patch release after 1.2.0: contradiction detection backends, capture daemon improvements, adapter/schema updates, and a CLI startup fix.
+
 - **DeBERTa-v3 contradiction detection:** local NLI-based contradiction classifier (`contradiction_backend = "deberta"`) using DeBERTa-v3-base exported to ONNX (~740MB, cached locally). No LLM or network call required at inference time. Detects contradicting memory pairs grouped by entity and marks the older entry as superseded. Falls back to recency when the model cannot determine which entry wins.
 - **LLM contradiction backend:** `contradiction_backend = "llm"` routes contradiction classification through Ollama (requires `aingram[llm]`). Both backends implement the new `ContradictionClassifier` protocol — swap without touching orchestration code.
 - **`ContradictionClassifier` protocol:** strategy-pattern interface (`classify(text_a, text_b) -> ContradictionVerdict`) in `aingram/processing/protocols.py`. `ContradictionVerdict` dataclass added to `aingram/types.py`.
@@ -12,6 +16,7 @@
 - **Gemini CLI / Cursor adapters:** updated field names to match current hook schemas.
 - **Config:** `AIngramConfig` extended with `contradiction_backend` and `contradiction_threshold`. `CaptureConfig` extended with `consolidation_interval_records`. All fields supported via env vars and `config.toml`.
 - **Fix — `aingram capture on/off`:** commands crashed at startup with `TypeError: 'default' is not supported for nargs=-1`. Fixed by changing to `list[str] | None = typer.Argument(default=None)`.
+- **Tests:** `test_store_v3` `MemoryStore` fixture now uses an explicit `AIngramConfig()` so consolidation and related tests do not pick up `contradiction_backend` (or other values) from `~/.aingram/config.toml` or the environment.
 
 ## 1.2.0
 

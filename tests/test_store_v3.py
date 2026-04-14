@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+from aingram.config import AIngramConfig
 from tests.conftest import ClusterTestEmbedder, MockEmbedder
 
 
@@ -13,7 +14,12 @@ def store(tmp_path):
     from aingram.store import MemoryStore
 
     db = tmp_path / 'test.db'
-    mem = MemoryStore(str(db), agent_name='test-agent', embedder=MockEmbedder())
+    mem = MemoryStore(
+        str(db),
+        agent_name='test-agent',
+        embedder=MockEmbedder(),
+        config=AIngramConfig(),
+    )
     yield mem
     mem.close()
 
