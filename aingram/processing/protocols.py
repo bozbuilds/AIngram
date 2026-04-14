@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from aingram.types import ExtractedEntity, MemoryType
+from aingram.types import ContradictionVerdict, ExtractedEntity, MemoryType
 
 
 @runtime_checkable
@@ -25,3 +25,8 @@ class EntityExtractor(Protocol):
 @runtime_checkable
 class LLMProcessor(Protocol):
     def complete(self, prompt: str, system: str | None = None) -> str: ...
+
+
+@runtime_checkable
+class ContradictionClassifier(Protocol):
+    def classify(self, text_a: str, text_b: str) -> ContradictionVerdict: ...

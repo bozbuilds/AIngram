@@ -509,6 +509,10 @@ class TestConsolidate:
 
         with (
             patch(
+                'aingram.consolidation.contradiction.LLMContradictionClassifier.__init__',
+                return_value=None,
+            ) as mock_classifier_init,
+            patch(
                 'aingram.consolidation.contradiction.ContradictionDetector.__init__',
                 return_value=None,
             ) as mock_detector_init,
@@ -542,9 +546,10 @@ class TestConsolidate:
 
             store.consolidate(llm=llm)
 
-            # Verify LLM was passed to ContradictionDetector
+            mock_classifier_init.assert_called_once_with(llm)
+
             _, kwargs = mock_detector_init.call_args
-            assert kwargs['llm'] is llm
+            assert 'classifier' in kwargs
 
             # Verify LLM was passed to MemoryMerger
             _, kwargs = mock_merger_init.call_args

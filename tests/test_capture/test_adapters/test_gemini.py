@@ -14,9 +14,9 @@ class TestGeminiAdapter:
     def test_parse_before_agent(self):
         payload = {
             'hook_event_name': 'BeforeAgent',
-            'user_prompt': 'explain this code',
+            'prompt': 'explain this code',
             'session_id': 'gem-sess-1',
-            'project_dir': '/home/user/proj',
+            'cwd': '/home/user/proj',
             'timestamp': time.time(),
         }
         records = self.adapter.parse_payload(payload)
@@ -27,13 +27,15 @@ class TestGeminiAdapter:
     def test_parse_after_agent(self):
         payload = {
             'hook_event_name': 'AfterAgent',
-            'response': 'This code does X...',
+            'prompt': 'explain this code',
+            'prompt_response': 'This code does X...',
             'session_id': 'gem-sess-1',
             'timestamp': time.time(),
         }
         records = self.adapter.parse_payload(payload)
         assert len(records) == 1
         assert records[0].assistant_response == 'This code does X...'
+        assert records[0].user_prompt == 'explain this code'
 
     def test_parse_session_start(self):
         payload = {

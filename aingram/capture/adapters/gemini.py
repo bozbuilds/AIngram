@@ -19,8 +19,8 @@ class GeminiAdapter(ToolAdapter):
                 CaptureRecord(
                     source_tool=self.tool_name,
                     session_id=session_id,
-                    user_prompt=raw.get('user_prompt', ''),
-                    project_path=raw.get('project_dir'),
+                    user_prompt=raw.get('prompt', ''),
+                    project_path=raw.get('cwd'),
                     timestamp=ts,
                 )
             ]
@@ -29,8 +29,8 @@ class GeminiAdapter(ToolAdapter):
                 CaptureRecord(
                     source_tool=self.tool_name,
                     session_id=session_id,
-                    user_prompt='',
-                    assistant_response=raw.get('response', ''),
+                    user_prompt=raw.get('prompt', ''),
+                    assistant_response=raw.get('prompt_response', ''),
                     timestamp=ts,
                 )
             ]

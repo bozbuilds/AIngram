@@ -29,6 +29,26 @@ from aingram.types import EntrySearchResult, MemoryEntry, ReasoningChain, Verifi
 
 logger = logging.getLogger(__name__)
 
+
+def _build_contradiction_classifier(config: AIngramConfig):
+    """Build a ContradictionClassifier from config, or None if disabled."""
+    if config.contradiction_backend == 'deberta':
+        from aingram.consolidation.deberta import DeBERTaContradictionClassifier
+
+        return DeBERTaContradictionClassifier(
+            threshold=config.contradiction_threshold,
+            onnx_provider=config.onnx_provider,
+        )
+    if config.contradiction_backend == 'llm':
+        from aingram.consolidation.contradiction import LLMContradictionClassifier
+        from aingram.processing.llm import OllamaLLM
+
+        return LLMContradictionClassifier(
+            OllamaLLM(model=config.llm_model, base_url=config.llm_url),
+        )
+    return None
+
+
 _VALID_REFERENCE_TYPES = frozenset(
     {
         'builds_on',
@@ -465,7 +485,10 @@ class MemoryStore:
         return verify_signature(session.public_key, entry.entry_id, entry.signature)
 
     def consolidate(self, *, llm=None, force: bool = True):
-        from aingram.consolidation.contradiction import ContradictionDetector
+        from aingram.consolidation.contradiction import (
+            ContradictionDetector,
+            LLMContradictionClassifier,
+        )
         from aingram.consolidation.decay import apply_decay
         from aingram.consolidation.knowledge import KnowledgeSynthesizer
         from aingram.consolidation.merger import MemoryMerger
@@ -475,7 +498,10 @@ class MemoryStore:
 
         decayed = apply_decay(self._engine)
 
-        detector = ContradictionDetector(self._engine, llm=llm)
+        classifier = _build_contradiction_classifier(self._config)
+        if classifier is None and llm is not None:
+            classifier = LLMContradictionClassifier(llm)
+        detector = ContradictionDetector(self._engine, classifier=classifier)
         contradiction_result = detector.detect_and_resolve()
 
         merger = MemoryMerger(
@@ -535,8 +561,7 @@ class MemoryStore:
                 encoded = encode_batch(vectors, projection)
                 for j, (packed, _) in enumerate(encoded):
                     self._engine._conn.execute(
-                        'INSERT INTO vec_entries_qjl (entry_id, embedding) '
-                        'VALUES (?, vec_bit(?))',
+                        'INSERT INTO vec_entries_qjl (entry_id, embedding) VALUES (?, vec_bit(?))',
                         (entry_ids[j], packed),
                     )
             self._engine._conn.commit()

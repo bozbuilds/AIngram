@@ -72,6 +72,15 @@ class ExtractedEntity:
 
 
 @dataclass
+class ContradictionVerdict:
+    """Result of a pairwise contradiction classification."""
+
+    contradicts: bool
+    confidence: float
+    superseded_index: int | None = None  # 0 or 1; None = orchestrator decides
+
+
+@dataclass
 class ConsolidationResult:
     """Result of a consolidation run."""
 

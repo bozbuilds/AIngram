@@ -143,6 +143,13 @@ class CaptureQueue:
         )
         conn.commit()
 
+    def last_capture_times(self) -> dict[str, float]:
+        conn = self._get_conn()
+        rows = conn.execute(
+            'SELECT source_tool, MAX(timestamp) AS last_ts FROM capture_queue GROUP BY source_tool'
+        ).fetchall()
+        return {row['source_tool']: row['last_ts'] for row in rows if row['last_ts'] is not None}
+
     def close(self) -> None:
         with self._conns_lock:
             for conn in self._all_conns:

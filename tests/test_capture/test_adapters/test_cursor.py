@@ -29,7 +29,7 @@ class TestCursorAdapter:
             'hook_event_name': 'afterAgentResponse',
             'conversation_id': 'conv-1',
             'generation_id': 'gen-1',
-            'response': 'Fixed the null check in line 42.',
+            'text': 'Fixed the null check in line 42.',
         }
         records = self.adapter.parse_payload(payload)
         assert len(records) == 1

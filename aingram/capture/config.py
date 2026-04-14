@@ -55,8 +55,14 @@ class CaptureConfig:
     memory_mode: str = 'unified'
     poll_interval: float = 0.5
     drain_batch_size: int = 10
+    consolidation_interval_records: int = 50  # 0 = disabled
     redaction_patterns: list[str] = field(default_factory=_default_redaction_patterns)
     tools: dict[str, ToolConfig] = field(default_factory=_default_tool_configs)
+
+    def __post_init__(self) -> None:
+        if self.consolidation_interval_records < 0:
+            n = self.consolidation_interval_records
+            raise ValueError(f'consolidation_interval_records must be >= 0, got {n}')
 
 
 def resolve_container_tag(record: CaptureRecord, config: CaptureConfig) -> str:

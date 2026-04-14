@@ -6,7 +6,24 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(python3:*)",
       "Bash(python:*)",
-      "Bash(curl -s http://localhost:8080)"
+      "Bash(curl -s http://localhost:8080)",
+      "Bash(tree -L 2 -d /d/Misc/GitHub/portfolio/AIngram --exclude \".venv|.venv-publish|node_modules|.git|__pycache__|.pytest_cache|git-filter-repo\")",
+      "Bash(wc -l /d/Misc/GitHub/portfolio/AIngram/docs/superpowers/plans/*.md /d/Misc/GitHub/portfolio/AIngram/docs/superpowers/specs/*.md)",
+      "Bash(curl:*)",
+      "Bash(sqlite3 ~/.aingram/capture_queue.db \"SELECT COUNT\\(*\\), state FROM capture_queue GROUP BY state;\")",
+      "Bash(sqlite3 \"D:/Misc/GitHub/aingram_local/agent_memory.db\" \"SELECT COUNT\\(*\\) FROM memory_entries;\")",
+      "Bash(sqlite3:*)",
+      "Bash(chmod +x /tmp/capture_debug_hook.sh)",
+      "Bash(tasklist)",
+      "Bash(wmic process:*)",
+      "WebSearch",
+      "WebFetch(domain:cursor.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:geminicli.com)",
+      "WebFetch(domain:blog.gitbutler.com)",
+      "WebFetch(domain:forum.cursor.com)",
+      "WebFetch(domain:skywork.ai)",
+      "Bash(powershell -c \"Get-Process -Id 27276 | Select-Object Path\")"
     ]
   }
 }

@@ -9,7 +9,7 @@ from aingram.types import ExtractedEntity
 logger = logging.getLogger(__name__)
 
 DEFAULT_ENTITY_TYPES = ['person', 'organization', 'location', 'project', 'technology']
-DEFAULT_MODEL = 'urchade/gliner_medium-v2.1'
+DEFAULT_MODEL = 'knowledgator/gliner-multitask-large-v0.5'
 
 
 class GlinerExtractor:

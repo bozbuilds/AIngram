@@ -77,3 +77,23 @@ class TestContainerTagResolution:
         config = CaptureConfig(memory_mode='isolated', tools={})
         record = CaptureRecord(source_tool='newtool', session_id='s', user_prompt='p', timestamp=0)
         assert resolve_container_tag(record, config) == 'newtool'
+
+
+class TestConsolidationIntervalRecords:
+    def test_default_value(self):
+        c = CaptureConfig()
+        assert c.consolidation_interval_records == 50
+
+    def test_zero_is_valid(self):
+        c = CaptureConfig(consolidation_interval_records=0)
+        assert c.consolidation_interval_records == 0
+
+    def test_custom_value(self):
+        c = CaptureConfig(consolidation_interval_records=100)
+        assert c.consolidation_interval_records == 100
+
+    def test_negative_raises(self):
+        import pytest
+
+        with pytest.raises(ValueError, match='consolidation_interval_records'):
+            CaptureConfig(consolidation_interval_records=-1)

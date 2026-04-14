@@ -101,6 +101,7 @@ def create_app(
         )
 
     async def status_handler(request: Request) -> JSONResponse:
+        last_captures = queue.last_capture_times()
         tools_status = {}
         for name, adapter in adapters.items():
             health = adapter.health_check()
@@ -108,7 +109,7 @@ def create_app(
                 'connected': health.connected,
                 'toggle': queue.get_toggle(name),
                 'tier': health.tier,
-                'last_capture': health.last_capture,
+                'last_capture': last_captures.get(name),
                 'error': health.error,
             }
         return JSONResponse(

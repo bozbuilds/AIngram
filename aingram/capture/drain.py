@@ -33,6 +33,7 @@ class CaptureDrain:
         self._memory_db_path = memory_db_path
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._records_since_consolidation: int = 0
 
     def _get_store(self):
         if self._store is None:
@@ -84,9 +85,21 @@ class CaptureDrain:
                 tags = ['captured', record.source_tool]
                 store.remember(content, metadata=metadata, tags=tags)
                 self._queue.mark_done(row_id)
+                self._records_since_consolidation += 1
             except Exception as e:
                 logger.error('Failed to drain record %s: %s', row_id, e, exc_info=True)
                 self._queue.mark_error(row_id, str(e))
+
+        if (
+            self._config.consolidation_interval_records > 0
+            and self._records_since_consolidation >= self._config.consolidation_interval_records
+        ):
+            try:
+                store = self._get_store()
+                store.consolidate()
+                self._records_since_consolidation = 0
+            except Exception as e:
+                logger.error('Auto-consolidation failed: %s', e, exc_info=True)
 
         return len(batch)
 

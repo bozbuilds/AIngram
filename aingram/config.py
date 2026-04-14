@@ -33,6 +33,8 @@ class AIngramConfig:
     onnx_provider: str | None = None  # None=auto, 'cuda', 'npu', 'cpu'
     telemetry_enabled: bool = True  # opt-out: set false to disable anonymous usage telemetry
     fts_prefilter_threshold: int = 50
+    contradiction_backend: str = 'none'  # 'deberta' | 'llm' | 'none'
+    contradiction_threshold: float = 0.7
     capture: CaptureConfig | None = None
 
     def __post_init__(self) -> None:
@@ -40,6 +42,9 @@ class AIngramConfig:
             raise ValueError(
                 f'extractor_mode must be none, sonnet, or local — got {self.extractor_mode!r}'
             )
+        if self.contradiction_backend not in ('deberta', 'llm', 'none'):
+            b = self.contradiction_backend
+            raise ValueError(f'contradiction_backend must be deberta, llm, or none — got {b!r}')
 
     def apply_log_level(self) -> None:
         level_name = self.log_level.upper()
@@ -67,6 +72,10 @@ def _coerce_value(field_name: str, raw: Any) -> Any:
         if raw is None or raw == 'None' or raw == '':
             return None
         return str(raw)
+    if field_name == 'contradiction_threshold' and raw is not None:
+        return float(raw)
+    if field_name == 'contradiction_backend':
+        return str(raw)
     return raw
 
 
@@ -87,6 +96,7 @@ def _parse_capture_config(data: dict[str, Any]) -> CaptureConfig:
         'memory_mode',
         'poll_interval',
         'drain_batch_size',
+        'consolidation_interval_records',
     ):
         if key in data:
             scalars[key] = data[key]
@@ -153,6 +163,10 @@ def _merge_env_into(config: AIngramConfig, env: dict[str, str]) -> AIngramConfig
         updates['telemetry_enabled'] = v.strip().lower() in ('1', 'true', 'yes', 'on')
     if v := env.get('AINGRAM_FTS_PREFILTER_THRESHOLD'):
         updates['fts_prefilter_threshold'] = int(v)
+    if v := env.get('AINGRAM_CONTRADICTION_BACKEND'):
+        updates['contradiction_backend'] = v
+    if v := env.get('AINGRAM_CONTRADICTION_THRESHOLD'):
+        updates['contradiction_threshold'] = float(v)
 
     capture_enabled = env.get('AINGRAM_CAPTURE_ENABLED')
     capture_port = env.get('AINGRAM_CAPTURE_PORT')

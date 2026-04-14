@@ -6,10 +6,10 @@ import logging
 from dataclasses import dataclass
 from itertools import combinations
 
-from aingram.processing.protocols import LLMProcessor
+from aingram.processing.protocols import ContradictionClassifier, LLMProcessor
 from aingram.security.bounds import sanitize_for_prompt
 from aingram.storage.engine import StorageEngine
-from aingram.types import MemoryEntry
+from aingram.types import ContradictionVerdict, MemoryEntry
 
 logger = logging.getLogger(__name__)
 
@@ -43,18 +43,44 @@ class ContradictionResult:
     contradictions_resolved: int
 
 
+class LLMContradictionClassifier:
+    """Contradiction classifier using an LLM via the LLMProcessor protocol."""
+
+    def __init__(self, llm: LLMProcessor) -> None:
+        self._llm = llm
+
+    def classify(self, text_a: str, text_b: str) -> ContradictionVerdict:
+        prompt = CONTRADICTION_USER_PROMPT.format(text_a=text_a, text_b=text_b)
+        try:
+            raw = self._llm.complete(prompt, system=CONTRADICTION_SYSTEM_PROMPT)
+            data = json.loads(raw)
+        except Exception:
+            return ContradictionVerdict(contradicts=False, confidence=0.0)
+
+        if not isinstance(data, dict):
+            return ContradictionVerdict(contradicts=False, confidence=0.0)
+        if not isinstance(data.get('contradicts'), bool):
+            return ContradictionVerdict(contradicts=False, confidence=0.0)
+
+        return ContradictionVerdict(
+            contradicts=data['contradicts'],
+            confidence=1.0,
+            superseded_index=data.get('superseded_index'),
+        )
+
+
 class ContradictionDetector:
     def __init__(
         self,
         engine: StorageEngine,
         *,
-        llm: LLMProcessor | None = None,
+        classifier: ContradictionClassifier | None = None,
     ) -> None:
         self._engine = engine
-        self._llm = llm
+        self._classifier = classifier
 
     def detect_and_resolve(self) -> ContradictionResult:
-        if self._llm is None:
+        if self._classifier is None:
             return ContradictionResult(contradictions_found=0, contradictions_resolved=0)
 
         entity_pairs = self._engine.get_entity_entry_pairs()
@@ -100,7 +126,6 @@ class ContradictionDetector:
         if len(entries) != 2:
             return None
 
-        # Build a dict for reliable lookup (get_entries_by_ids has no ORDER BY)
         by_id = {e.entry_id: e for e in entries}
         entry_a, entry_b = by_id[id_a], by_id[id_b]
 
@@ -109,25 +134,22 @@ class ContradictionDetector:
         if type_pair in _NATURAL_SUPERSESSION_PAIRS:
             return None
 
-        prompt = CONTRADICTION_USER_PROMPT.format(
-            text_a=sanitize_for_prompt(entry_a.content),
-            text_b=sanitize_for_prompt(entry_b.content),
+        verdict = self._classifier.classify(
+            sanitize_for_prompt(entry_a.content),
+            sanitize_for_prompt(entry_b.content),
         )
-        try:
-            raw = self._llm.complete(prompt, system=CONTRADICTION_SYSTEM_PROMPT)
-            data = json.loads(raw)
-        except Exception:
+
+        if not verdict.contradicts:
             return None
 
-        if not isinstance(data, dict):
-            return None
-        if not isinstance(data.get('contradicts'), bool):
-            return None
-        if not data['contradicts']:
-            return None
+        if verdict.superseded_index is not None:
+            if verdict.superseded_index not in (0, 1):
+                return None
+            ordered = [entry_a, entry_b]
+            superseded = ordered[verdict.superseded_index]
+            return superseded.entry_id, superseded
 
-        idx = data.get('superseded_index')
-        if idx not in (0, 1):
-            return None
-        ordered = [entry_a, entry_b]
-        return ordered[idx].entry_id, ordered[idx]
+        # Recency fallback: older entry is superseded
+        if entry_a.created_at <= entry_b.created_at:
+            return entry_a.entry_id, entry_a
+        return entry_b.entry_id, entry_b

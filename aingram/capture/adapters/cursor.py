@@ -39,7 +39,7 @@ class CursorAdapter(ToolAdapter):
                     source_tool=self.tool_name,
                     session_id=conversation_id,
                     user_prompt='',
-                    assistant_response=raw.get('response', ''),
+                    assistant_response=raw.get('text', ''),
                     timestamp=ts,
                     metadata=json.dumps({'generation_id': generation_id}),
                 )

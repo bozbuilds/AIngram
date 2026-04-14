@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 from aingram.capture.config import CaptureConfig
 from aingram.capture.drain import CaptureDrain
 from aingram.capture.queue import CaptureQueue
@@ -114,4 +116,95 @@ class TestCaptureDrain:
         assert drain.is_running
         drain.stop(timeout=2.0)
         assert not drain.is_running
+        drain.close()
+
+
+class TestAutoConsolidation:
+    def _make_drain(self, tmp_path, interval: int, store=None):
+        queue_db = str(tmp_path / 'queue.db')
+        config = CaptureConfig(
+            poll_interval=0.1,
+            drain_batch_size=10,
+            consolidation_interval_records=interval,
+        )
+        queue = CaptureQueue(queue_db)
+        drain = CaptureDrain(
+            queue=queue,
+            config=config,
+            store=store,
+            memory_db_path='',
+            embedder=MockEmbedder(),
+        )
+        return drain, queue
+
+    def test_consolidation_not_called_before_threshold(self, tmp_path):
+        mock_store = MagicMock()
+        drain, queue = self._make_drain(tmp_path, interval=5, store=mock_store)
+
+        for _ in range(4):
+            queue.insert(_make_record())
+
+        drain.process_batch()
+        mock_store.consolidate.assert_not_called()
+        drain.close()
+
+    def test_consolidation_called_at_threshold(self, tmp_path):
+        mock_store = MagicMock()
+        drain, queue = self._make_drain(tmp_path, interval=3, store=mock_store)
+
+        for _ in range(3):
+            queue.insert(_make_record())
+
+        drain.process_batch()
+        mock_store.consolidate.assert_called_once()
+        drain.close()
+
+    def test_counter_resets_after_successful_consolidation(self, tmp_path):
+        mock_store = MagicMock()
+        drain, queue = self._make_drain(tmp_path, interval=2, store=mock_store)
+
+        for _ in range(2):
+            queue.insert(_make_record())
+        drain.process_batch()
+        assert drain._records_since_consolidation == 0
+
+        queue.insert(_make_record())
+        drain.process_batch()
+        assert drain._records_since_consolidation == 1
+        assert mock_store.consolidate.call_count == 1
+        drain.close()
+
+    def test_counter_not_reset_on_consolidation_failure(self, tmp_path):
+        mock_store = MagicMock()
+        mock_store.consolidate.side_effect = RuntimeError('consolidation error')
+        drain, queue = self._make_drain(tmp_path, interval=2, store=mock_store)
+
+        for _ in range(2):
+            queue.insert(_make_record())
+        drain.process_batch()
+
+        assert drain._records_since_consolidation == 2
+        drain.close()
+
+    def test_errored_records_do_not_increment_counter(self, tmp_path):
+        mock_store = MagicMock()
+        mock_store.remember.side_effect = RuntimeError('remember failed')
+        drain, queue = self._make_drain(tmp_path, interval=2, store=mock_store)
+
+        for _ in range(3):
+            queue.insert(_make_record())
+        drain.process_batch()
+
+        assert drain._records_since_consolidation == 0
+        mock_store.consolidate.assert_not_called()
+        drain.close()
+
+    def test_zero_interval_never_consolidates(self, tmp_path):
+        mock_store = MagicMock()
+        drain, queue = self._make_drain(tmp_path, interval=0, store=mock_store)
+
+        for _ in range(10):
+            queue.insert(_make_record())
+        drain.process_batch()
+        mock_store.consolidate.assert_not_called()
         drain.close()

@@ -5,7 +5,7 @@ import logging
 import math
 from datetime import UTC, datetime
 
-from aingram.consolidation.contradiction import ContradictionDetector
+from aingram.consolidation.contradiction import ContradictionDetector, LLMContradictionClassifier
 from aingram.consolidation.decay import apply_decay
 from aingram.consolidation.merger import MemoryMerger
 from aingram.graph.traversal import GraphTraversal
@@ -203,7 +203,8 @@ class MemoryPipeline:
         decayed = apply_decay(self._engine)
 
         # Step 2: Contradiction detection (LLM-dependent)
-        detector = ContradictionDetector(self._engine, llm=llm)
+        classifier = LLMContradictionClassifier(llm) if llm is not None else None
+        detector = ContradictionDetector(self._engine, classifier=classifier)
         contradiction_result = detector.detect_and_resolve()
 
         # Step 3: Memory merging (LLM-dependent)

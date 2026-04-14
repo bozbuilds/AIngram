@@ -2,6 +2,7 @@
 
 import pytest
 
+from aingram.consolidation.contradiction import ContradictionDetector, LLMContradictionClassifier
 from aingram.storage.engine import StorageEngine
 from aingram.types import AgentSession
 from tests.conftest import MockEmbedder, MockLLM
@@ -62,16 +63,13 @@ class TestDecayV3:
 
 class TestContradictionV3:
     def test_no_contradictions_without_entities(self, engine_with_entries):
-        from aingram.consolidation.contradiction import ContradictionDetector
-
-        detector = ContradictionDetector(engine_with_entries, llm=MockLLM('{"contradicts": false}'))
+        classifier = LLMContradictionClassifier(MockLLM('{"contradicts": false}'))
+        detector = ContradictionDetector(engine_with_entries, classifier=classifier)
         result = detector.detect_and_resolve()
         assert result.contradictions_found == 0
 
     def test_entry_type_aware_supersession(self, engine_with_entries):
         """A result superseding a hypothesis should not be flagged as contradiction."""
-        from aingram.consolidation.contradiction import ContradictionDetector
-
         # Set up: hypothesis and result about same topic, linked to same entity
         engine_with_entries.store_entry(
             entry_id='hyp1',
@@ -103,10 +101,10 @@ class TestContradictionV3:
         engine_with_entries.link_entity_to_mention(eid, 'res1')
 
         # Even if LLM says "contradicts", the type pair (hypothesis, result) should be skipped
-        detector = ContradictionDetector(
-            engine_with_entries,
-            llm=MockLLM('{"contradicts": true, "superseded_index": 0}'),
+        classifier = LLMContradictionClassifier(
+            MockLLM('{"contradicts": true, "superseded_index": 0}'),
         )
+        detector = ContradictionDetector(engine_with_entries, classifier=classifier)
         result = detector.detect_and_resolve()
         assert result.contradictions_found == 0  # skipped because result→hypothesis is natural
 
