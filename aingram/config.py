@@ -6,7 +6,10 @@ import os
 import tomllib
 from dataclasses import dataclass, fields, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from aingram.capture.config import CaptureConfig
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,7 @@ class AIngramConfig:
     onnx_provider: str | None = None  # None=auto, 'cuda', 'npu', 'cpu'
     telemetry_enabled: bool = True  # opt-out: set false to disable anonymous usage telemetry
     fts_prefilter_threshold: int = 50
+    capture: CaptureConfig | None = None
 
     def __post_init__(self) -> None:
         if self.extractor_mode not in ('none', 'sonnet', 'local'):
@@ -66,10 +70,56 @@ def _coerce_value(field_name: str, raw: Any) -> Any:
     return raw
 
 
+def _parse_capture_config(data: dict[str, Any]) -> CaptureConfig:
+    from aingram.capture.config import (
+        AiderToolConfig,
+        CaptureConfig,
+        ChatGPTToolConfig,
+        ToolConfig,
+    )
+
+    scalars: dict[str, Any] = {}
+    for key in (
+        'enabled',
+        'host',
+        'port',
+        'queue_db_path',
+        'memory_mode',
+        'poll_interval',
+        'drain_batch_size',
+    ):
+        if key in data:
+            scalars[key] = data[key]
+
+    redaction = data.get('redaction', {})
+    if isinstance(redaction, dict) and 'patterns' in redaction:
+        scalars['redaction_patterns'] = redaction['patterns']
+
+    tools_data = data.get('tools', {})
+    if tools_data:
+        tools: dict[str, Any] = {}
+        tool_class_map = {
+            'aider': AiderToolConfig,
+            'chatgpt': ChatGPTToolConfig,
+        }
+        for tool_name, tool_dict in tools_data.items():
+            if not isinstance(tool_dict, dict):
+                continue
+            cls = tool_class_map.get(tool_name, ToolConfig)
+            allowed = {f.name for f in fields(cls)}
+            tools[tool_name] = cls(**{k: v for k, v in tool_dict.items() if k in allowed})
+        scalars['tools'] = tools
+
+    return CaptureConfig(**scalars)
+
+
 def _merge_toml_into(config: AIngramConfig, data: dict[str, Any]) -> AIngramConfig:
     allowed = {f.name for f in fields(AIngramConfig)}
     updates: dict[str, Any] = {}
     for key, raw in data.items():
+        if key == 'capture' and isinstance(raw, dict):
+            updates['capture'] = _parse_capture_config(raw)
+            continue
         if key not in allowed:
             logger.debug('Ignoring unknown config key %r', key)
             continue
@@ -103,6 +153,26 @@ def _merge_env_into(config: AIngramConfig, env: dict[str, str]) -> AIngramConfig
         updates['telemetry_enabled'] = v.strip().lower() in ('1', 'true', 'yes', 'on')
     if v := env.get('AINGRAM_FTS_PREFILTER_THRESHOLD'):
         updates['fts_prefilter_threshold'] = int(v)
+
+    capture_enabled = env.get('AINGRAM_CAPTURE_ENABLED')
+    capture_port = env.get('AINGRAM_CAPTURE_PORT')
+    if capture_enabled or capture_port:
+        from aingram.capture.config import CaptureConfig
+
+        base = config.capture if config.capture is not None else CaptureConfig()
+        capture_updates: dict[str, Any] = {}
+        if capture_enabled:
+            capture_updates['enabled'] = capture_enabled.strip().lower() in (
+                '1',
+                'true',
+                'yes',
+                'on',
+            )
+        if capture_port:
+            capture_updates['port'] = int(capture_port)
+        if capture_updates:
+            updates['capture'] = replace(base, **capture_updates)
+
     return replace(config, **updates) if updates else config
 
 

@@ -1,0 +1,1 @@
+"""Tool-specific capture adapters."""

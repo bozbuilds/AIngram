@@ -236,6 +236,209 @@ def agent_revoke(
         mem.close()
 
 
+capture_app = typer.Typer(help='Capture daemon management', no_args_is_help=True)
+app.add_typer(capture_app, name='capture')
+
+
+@capture_app.command('start')
+def capture_start(
+    ctx: typer.Context,
+    port: int | None = typer.Option(None, '--port', help='Override daemon port'),
+    daemon_mode: bool = typer.Option(False, '--daemon', '-d', help='Run in background'),
+) -> None:
+    """Start the capture daemon."""
+    try:
+        from aingram.capture.config import CaptureConfig
+    except ImportError:
+        typer.echo('Capture requires extra dependencies: pip install aingram[capture]', err=True)
+        raise typer.Exit(code=1) from None
+
+    import os
+    import subprocess
+    import sys
+    from dataclasses import replace
+    from pathlib import Path
+
+    from aingram.capture.daemon import run_daemon
+    from aingram.capture.queue import CaptureQueue
+    from aingram.config import load_merged_config
+
+    merged = load_merged_config()
+    capture_cfg = merged.capture if merged.capture is not None else CaptureConfig()
+    if port is not None:
+        capture_cfg = replace(capture_cfg, port=port)
+
+    queue_db = os.path.expanduser(capture_cfg.queue_db_path)
+    queue = CaptureQueue(queue_db)
+    queue.init_toggles({name: cfg.enabled for name, cfg in capture_cfg.tools.items()})
+
+    if daemon_mode:
+        pid_file = Path.home() / '.aingram' / 'capture.pid'
+        pid_file.parent.mkdir(parents=True, exist_ok=True)
+        cmd = [sys.executable, '-m', 'aingram.cli', '--db', ctx.obj['db'], 'capture', 'start']
+        if port is not None:
+            cmd.extend(['--port', str(port)])
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        pid_file.write_text(str(proc.pid))
+        typer.echo(f'Capture daemon started (PID {proc.pid})')
+        queue.close()
+        return
+
+    run_daemon(config=capture_cfg, queue=queue, memory_db_path=ctx.obj['db'])
+
+
+@capture_app.command('stop')
+def capture_stop() -> None:
+    """Stop the capture daemon."""
+    import os
+    import signal
+    import sys
+    from pathlib import Path
+
+    pid_file = Path.home() / '.aingram' / 'capture.pid'
+    sentinel = Path.home() / '.aingram' / 'capture.stop'
+
+    if not pid_file.exists():
+        typer.echo('No capture daemon PID file found.')
+        raise typer.Exit(code=1)
+
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.touch()
+    typer.echo('Stop signal sent.')
+
+    if sys.platform != 'win32':
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+        except (OSError, ValueError):
+            pass
+
+    if pid_file.exists():
+        try:
+            pid_file.unlink()
+        except OSError:
+            pass
+    typer.echo('Capture daemon stopped.')
+
+
+@capture_app.command('status')
+def capture_status() -> None:
+    """Show capture daemon status."""
+    import json as json_mod
+    import os
+
+    from aingram.capture.config import CaptureConfig
+    from aingram.capture.queue import CaptureQueue
+    from aingram.config import load_merged_config
+
+    merged = load_merged_config()
+    if merged.capture is None:
+        capture_cfg = CaptureConfig()
+    else:
+        capture_cfg = merged.capture
+
+    try:
+        import httpx
+    except ImportError:
+        httpx = None  # type: ignore[assignment]
+
+    if httpx is not None:
+        try:
+            resp = httpx.get(
+                f'http://{capture_cfg.host}:{capture_cfg.port}/status', timeout=2.0
+            )
+            typer.echo(json_mod.dumps(resp.json(), indent=2))
+            return
+        except httpx.HTTPError:
+            pass
+
+    queue_db = os.path.expanduser(capture_cfg.queue_db_path)
+    if not os.path.exists(queue_db):
+        typer.echo('Capture daemon is not running. No queue database found.')
+        raise typer.Exit(code=1)
+
+    queue = CaptureQueue(queue_db)
+    typer.echo('Capture daemon is NOT running.')
+    typer.echo(f'Queue depth: {queue.pending_count()} pending')
+    for tool_name in capture_cfg.tools:
+        toggle = queue.get_toggle(tool_name)
+        typer.echo(f'  {tool_name}: {toggle}')
+    queue.close()
+
+
+@capture_app.command('on')
+def capture_on(
+    tools: list[str] = typer.Argument(default_factory=list),
+) -> None:
+    """Enable capture for tools."""
+    _set_capture_toggles(tools, 'on')
+
+
+@capture_app.command('off')
+def capture_off(
+    tools: list[str] = typer.Argument(default_factory=list),
+) -> None:
+    """Disable capture for tools."""
+    _set_capture_toggles(tools, 'off')
+
+
+def _set_capture_toggles(tools: list[str], state: str) -> None:
+    import os
+
+    from aingram.capture.config import CaptureConfig
+    from aingram.capture.queue import CaptureQueue
+    from aingram.config import load_merged_config
+
+    merged = load_merged_config()
+    capture_cfg = merged.capture if merged.capture is not None else CaptureConfig()
+    queue_db = os.path.expanduser(capture_cfg.queue_db_path)
+    if not os.path.exists(queue_db):
+        typer.echo('No capture queue database found. Run "aingram capture start" first.', err=True)
+        raise typer.Exit(code=1)
+
+    queue = CaptureQueue(queue_db)
+    target_tools = tools if tools else list(capture_cfg.tools.keys())
+    for tool_name in target_tools:
+        queue.set_toggle(tool_name, state)
+        typer.echo(f'{tool_name}: {state}')
+    queue.close()
+
+
+@capture_app.command('install')
+def capture_install(
+    tool: str = typer.Argument(..., help='Tool name (e.g., claude_code, cursor, gemini)'),
+) -> None:
+    """Print setup instructions for a tool's capture integration."""
+    from importlib import import_module
+
+    from aingram.capture.config import CaptureConfig
+
+    adapter_map = {
+        'claude_code': 'aingram.capture.adapters.claude:ClaudeCodeAdapter',
+        'cursor': 'aingram.capture.adapters.cursor:CursorAdapter',
+        'gemini': 'aingram.capture.adapters.gemini:GeminiAdapter',
+        'aider': 'aingram.capture.adapters.aider:AiderAdapter',
+        'copilot': 'aingram.capture.adapters.copilot:CopilotAdapter',
+        'cline': 'aingram.capture.adapters.cline:ClineAdapter',
+        'chatgpt': 'aingram.capture.adapters.chatgpt:ChatGPTAdapter',
+    }
+
+    if tool not in adapter_map:
+        typer.echo(f'Unknown tool: {tool}. Available: {", ".join(adapter_map)}', err=True)
+        raise typer.Exit(code=1)
+
+    module_path, class_name = adapter_map[tool].rsplit(':', 1)
+    mod = import_module(module_path)
+    adapter_cls = getattr(mod, class_name)
+    adapter = adapter_cls(CaptureConfig())
+    typer.echo(adapter.get_installation_instructions())
+
+
 @app.command()
 def export(
     ctx: typer.Context,

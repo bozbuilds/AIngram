@@ -47,6 +47,11 @@ crewai = ["crewai>=0.40"]
 langgraph = ["langgraph>=0.2"]
 autogen = ["autogen-agentchat>=0.4"]
 smolagents = ["smolagents>=1.0"]
+capture = [
+    "starlette>=0.37.0",
+    "uvicorn>=0.29.0",
+    "watchdog>=4.0.0",
+]
 all = ["aingram[mcp,extraction,llm,cli,langchain,crewai,langgraph,autogen,smolagents]"]
 dev = [
     "pytest>=8.0.0",
@@ -56,6 +61,9 @@ dev = [
     "mcp>=1.0.0",
     "langchain-core>=0.2",
     "langgraph>=0.2",
+    "starlette>=0.37.0",
+    "uvicorn>=0.29.0",
+    "watchdog>=4.0.0",
 ]
 
 [tool.ruff]
