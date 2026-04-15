@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aingram"
-version = "1.2.1"
+version = "1.2.2"
 description = "Local-first, privacy-first agent memory — Lite edition (Apache-2.0)"
 readme = "README.md"
 requires-python = ">=3.11"

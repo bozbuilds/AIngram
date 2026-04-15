@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.2.2
+
+- **Capture filters:** drop low-substance turns when there are no `tool_calls` and combined prompt + response text is shorter than 40 characters (after resolving JSON `{"text":...}` wrappers).
+- **Capture queue:** skip enqueueing when the same `user_prompt` was already queued within the last 5 minutes (`insert` returns `None`); reduces duplicate backlog from repeated hooks.
+- **Contradiction detection:** cap total entry pairs evaluated per `consolidate()` run at 200 (still at most 50 per entity); remainder is deferred with an info log.
+- **Storage:** `get_entity_entry_pairs()` now returns only mentions for **non-consolidated** entries, so contradiction passes ignore superseded graph noise.
+
 ## 1.2.1
 
 Patch release after 1.2.0: contradiction detection backends, capture daemon improvements, adapter/schema updates, and a CLI startup fix.
