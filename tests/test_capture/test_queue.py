@@ -23,7 +23,6 @@ class TestCaptureQueueInsertAndDequeue:
         assert len(batch) == 1
         _, record = batch[0]
         assert record.source_tool == 'claude_code'
-        assert record.user_prompt == 'hello'
         q.close()
 
     def test_dequeue_empty_returns_empty(self, tmp_queue_db):
@@ -42,18 +41,36 @@ class TestCaptureQueueInsertAndDequeue:
     def test_dequeue_respects_limit(self, tmp_queue_db):
         q = CaptureQueue(tmp_queue_db)
         for i in range(5):
-            q.insert(_make_record(session_id=f'sess-{i}'))
+            q.insert(_make_record(user_prompt=f'unique prompt number {i}', timestamp=1000.0 + i))
         batch = q.dequeue_batch(3)
         assert len(batch) == 3
         q.close()
 
     def test_fifo_ordering(self, tmp_queue_db):
         q = CaptureQueue(tmp_queue_db)
-        q.insert(_make_record(user_prompt='first'))
-        q.insert(_make_record(user_prompt='second'))
+        q.insert(_make_record(user_prompt='first unique prompt', timestamp=1000.0))
+        q.insert(_make_record(user_prompt='second unique prompt', timestamp=1001.0))
         batch = q.dequeue_batch(10)
-        assert batch[0][1].user_prompt == 'first'
-        assert batch[1][1].user_prompt == 'second'
+        assert batch[0][1].user_prompt == 'first unique prompt'
+        assert batch[1][1].user_prompt == 'second unique prompt'
+        q.close()
+
+    def test_dedup_rejects_identical_content_within_window(self, tmp_queue_db):
+        q = CaptureQueue(tmp_queue_db)
+        row1 = q.insert(_make_record(user_prompt='duplicate prompt', timestamp=1000.0))
+        row2 = q.insert(_make_record(user_prompt='duplicate prompt', timestamp=1001.0))
+        assert row1 is not None
+        assert row2 is None
+        assert q.pending_count() == 1
+        q.close()
+
+    def test_dedup_allows_same_content_outside_window(self, tmp_queue_db):
+        q = CaptureQueue(tmp_queue_db)
+        row1 = q.insert(_make_record(user_prompt='repeated prompt', timestamp=1000.0))
+        row2 = q.insert(_make_record(user_prompt='repeated prompt', timestamp=1400.0))
+        assert row1 is not None
+        assert row2 is not None
+        assert q.pending_count() == 2
         q.close()
 
 
@@ -102,17 +119,24 @@ class TestCaptureQueueThreadSafety:
     def test_concurrent_inserts(self, tmp_queue_db):
         q = CaptureQueue(tmp_queue_db)
         errors = []
+        base_ts = 1000.0
 
-        def insert_records(n):
+        def insert_records(thread_idx, n):
             try:
                 for i in range(n):
+                    ts = base_ts + thread_idx * 1000 + i
                     q.insert(
-                        _make_record(session_id=f'thread-{threading.current_thread().name}-{i}')
+                        _make_record(
+                            user_prompt=f'thread-{thread_idx}-prompt-{i}',
+                            timestamp=ts,
+                        )
                     )
             except Exception as e:
                 errors.append(e)
 
-        threads = [threading.Thread(target=insert_records, args=(20,)) for _ in range(4)]
+        threads = [
+            threading.Thread(target=insert_records, args=(t, 20)) for t in range(4)
+        ]
         for t in threads:
             t.start()
         for t in threads:

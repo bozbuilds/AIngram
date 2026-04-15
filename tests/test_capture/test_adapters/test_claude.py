@@ -63,20 +63,33 @@ class TestClaudeCodeAdapter:
         payload = {
             'session_id': 'sess-hook',
             'hook_event_name': 'PostToolUse',
-            'tool_name': 'Read',
-            'tool_input': {'file_path': '/src/main.py'},
-            'tool_response': {'content': 'print("hello")'},
+            'tool_name': 'Edit',
+            'tool_input': {'file_path': '/src/main.py', 'old_string': 'a', 'new_string': 'b'},
+            'tool_response': {'content': 'file edited'},
             'tool_use_id': 'tu-123',
             'cwd': '/home/user/project',
         }
         records = self.adapter.parse_payload(payload)
         assert len(records) == 1
         assert records[0].source_tool == 'claude_code'
-        assert '[Read]' in records[0].user_prompt
+        assert '[Edit]' in records[0].user_prompt
         assert records[0].session_id == 'sess-hook'
         assert records[0].project_path == '/home/user/project'
         assert records[0].tool_calls is not None
-        assert 'Read' in records[0].tool_calls
+        assert 'Edit' in records[0].tool_calls
+
+    def test_skip_read_only_tools(self):
+        for tool in ('Read', 'Glob', 'Grep'):
+            payload = {
+                'session_id': 'sess-hook',
+                'hook_event_name': 'PostToolUse',
+                'tool_name': tool,
+                'tool_input': {'path': '/src'},
+                'tool_response': {'content': 'result'},
+                'tool_use_id': 'tu-456',
+            }
+            records = self.adapter.parse_payload(payload)
+            assert records == [], f'{tool} should be skipped'
 
     def test_installation_instructions_contains_curl(self):
         instructions = self.adapter.get_installation_instructions()

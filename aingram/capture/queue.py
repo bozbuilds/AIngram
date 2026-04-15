@@ -27,8 +27,21 @@ class CaptureQueue:
                 self._all_conns.append(conn)
         return self._local.conn
 
-    def insert(self, record: CaptureRecord) -> int:
+    _DEDUP_WINDOW_SECONDS = 300  # 5 minutes
+
+    def insert(self, record: CaptureRecord) -> int | None:
         conn = self._get_conn()
+
+        # Skip exact duplicate content queued within the dedup window.
+        cutoff = record.timestamp - self._DEDUP_WINDOW_SECONDS
+        dupe = conn.execute(
+            'SELECT 1 FROM capture_queue '
+            'WHERE user_prompt = ? AND timestamp > ? LIMIT 1',
+            (record.user_prompt, cutoff),
+        ).fetchone()
+        if dupe is not None:
+            return None
+
         cur = conn.execute(
             """INSERT INTO capture_queue
                (source_tool, session_id, turn_number, user_prompt,

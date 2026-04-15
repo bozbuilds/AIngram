@@ -141,8 +141,8 @@ class TestAutoConsolidation:
         mock_store = MagicMock()
         drain, queue = self._make_drain(tmp_path, interval=5, store=mock_store)
 
-        for _ in range(4):
-            queue.insert(_make_record())
+        for i in range(4):
+            queue.insert(_make_record(user_prompt=f'unique prompt {i}', timestamp=1000.0 + i))
 
         drain.process_batch()
         mock_store.consolidate.assert_not_called()
@@ -152,8 +152,8 @@ class TestAutoConsolidation:
         mock_store = MagicMock()
         drain, queue = self._make_drain(tmp_path, interval=3, store=mock_store)
 
-        for _ in range(3):
-            queue.insert(_make_record())
+        for i in range(3):
+            queue.insert(_make_record(user_prompt=f'unique prompt {i}', timestamp=1000.0 + i))
 
         drain.process_batch()
         mock_store.consolidate.assert_called_once()
@@ -163,12 +163,12 @@ class TestAutoConsolidation:
         mock_store = MagicMock()
         drain, queue = self._make_drain(tmp_path, interval=2, store=mock_store)
 
-        for _ in range(2):
-            queue.insert(_make_record())
+        for i in range(2):
+            queue.insert(_make_record(user_prompt=f'unique prompt {i}', timestamp=1000.0 + i))
         drain.process_batch()
         assert drain._records_since_consolidation == 0
 
-        queue.insert(_make_record())
+        queue.insert(_make_record(user_prompt='unique prompt 2', timestamp=1002.0))
         drain.process_batch()
         assert drain._records_since_consolidation == 1
         assert mock_store.consolidate.call_count == 1
@@ -179,8 +179,8 @@ class TestAutoConsolidation:
         mock_store.consolidate.side_effect = RuntimeError('consolidation error')
         drain, queue = self._make_drain(tmp_path, interval=2, store=mock_store)
 
-        for _ in range(2):
-            queue.insert(_make_record())
+        for i in range(2):
+            queue.insert(_make_record(user_prompt=f'unique prompt {i}', timestamp=1000.0 + i))
         drain.process_batch()
 
         assert drain._records_since_consolidation == 2
@@ -191,8 +191,8 @@ class TestAutoConsolidation:
         mock_store.remember.side_effect = RuntimeError('remember failed')
         drain, queue = self._make_drain(tmp_path, interval=2, store=mock_store)
 
-        for _ in range(3):
-            queue.insert(_make_record())
+        for i in range(3):
+            queue.insert(_make_record(user_prompt=f'unique prompt {i}', timestamp=1000.0 + i))
         drain.process_batch()
 
         assert drain._records_since_consolidation == 0
@@ -203,8 +203,8 @@ class TestAutoConsolidation:
         mock_store = MagicMock()
         drain, queue = self._make_drain(tmp_path, interval=0, store=mock_store)
 
-        for _ in range(10):
-            queue.insert(_make_record())
+        for i in range(10):
+            queue.insert(_make_record(user_prompt=f'unique prompt {i}', timestamp=1000.0 + i))
         drain.process_batch()
         mock_store.consolidate.assert_not_called()
         drain.close()

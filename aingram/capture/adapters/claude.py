@@ -8,6 +8,9 @@ from aingram.capture.types import CaptureRecord, ToolHealth
 
 
 class ClaudeCodeAdapter(ToolAdapter):
+    # Read-only tool calls produce lookup artifacts, not knowledge worth remembering.
+    _SKIP_TOOLS = frozenset({'Read', 'Glob', 'Grep', 'ListDir', 'LS', 'View'})
+
     tool_name = 'claude_code'
 
     def parse_payload(self, raw: dict) -> list[CaptureRecord]:
@@ -29,6 +32,8 @@ class ClaudeCodeAdapter(ToolAdapter):
             ]
         if event_name == 'PostToolUse':
             tool_name = raw.get('tool_name', '')
+            if tool_name in self._SKIP_TOOLS:
+                return []
             tool_input = raw.get('tool_input', {})
             tool_response = raw.get('tool_response', {})
             summary = f'[{tool_name}] {json.dumps(tool_input, default=str)[:500]}'

@@ -24,7 +24,7 @@ class TestCaptureRoutes:
         payload = {
             'session_id': 'sess-1',
             'type': 'user_prompt',
-            'message': 'hello from claude',
+            'message': 'refactor the authentication module to use JWT tokens instead of sessions',
             'timestamp': 1000.0,
         }
         resp = client.post('/capture/claude-code/hook', json=payload)
@@ -38,7 +38,7 @@ class TestCaptureRoutes:
             'hook_event_name': 'beforeSubmitPrompt',
             'conversation_id': 'conv-1',
             'generation_id': 'gen-1',
-            'prompt': 'hello from cursor',
+            'prompt': 'add error handling to the database connection pooling logic in cursor',
         }
         resp = client.post('/capture/cursor/hook', json=payload)
         assert resp.status_code == 200
@@ -49,7 +49,7 @@ class TestCaptureRoutes:
         client = TestClient(app)
         payload = {
             'hook_event_name': 'BeforeAgent',
-            'user_prompt': 'hello from gemini',
+            'prompt': 'explain how the vector search pipeline works in gemini',
             'session_id': 'gem-1',
             'timestamp': 1000.0,
         }

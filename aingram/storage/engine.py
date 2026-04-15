@@ -1597,10 +1597,15 @@ class StorageEngine:
                 raise DatabaseError(str(e)) from e
 
     def get_entity_entry_pairs(self) -> list[tuple[str, str]]:
-        """Return all (entity_id, entry_id) pairs from entity_mentions."""
+        """Return (entity_id, entry_id) pairs, excluding already-consolidated entries."""
         self._check_open()
         with self._lock:
-            cursor = self._conn.execute('SELECT entity_id, entry_id FROM entity_mentions')
+            cursor = self._conn.execute(
+                'SELECT em.entity_id, em.entry_id '
+                'FROM entity_mentions em '
+                'JOIN memory_entries me ON me.entry_id = em.entry_id '
+                'WHERE me.consolidated = 0'
+            )
             return cursor.fetchall()
 
     def get_entries_for_decay(self, *, limit: int = 5000) -> list[MemoryEntry]:

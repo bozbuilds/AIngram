@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 _SUPERSEDED_IMPORTANCE_FACTOR = 0.3
 _MAX_PAIRS_PER_ENTITY = 50
+_MAX_TOTAL_PAIRS = 200
 
 # Entry type pairs where supersession is natural (not a contradiction)
 # A result naturally supersedes a hypothesis — that's the scientific method.
@@ -95,15 +96,21 @@ class ContradictionDetector:
         found = 0
         resolved = 0
         checked: set[frozenset[str]] = set()
+        total_checked = 0
 
         for entry_ids in entity_entries.values():
+            if total_checked >= _MAX_TOTAL_PAIRS:
+                break
             pairs_checked = 0
             for id_a, id_b in combinations(entry_ids, 2):
+                if total_checked >= _MAX_TOTAL_PAIRS:
+                    break
                 pair_key = frozenset({id_a, id_b})
                 if pair_key in checked or pairs_checked >= _MAX_PAIRS_PER_ENTITY:
                     continue
                 checked.add(pair_key)
                 pairs_checked += 1
+                total_checked += 1
 
                 result = self._check_pair(id_a, id_b)
                 if result is not None:
@@ -118,6 +125,13 @@ class ContradictionDetector:
                         ]
                     )
                     resolved += 1
+
+        if total_checked >= _MAX_TOTAL_PAIRS:
+            logger.info(
+                'Contradiction detection hit global cap (%d pairs); '
+                'remaining pairs deferred to next consolidation run',
+                _MAX_TOTAL_PAIRS,
+            )
 
         return ContradictionResult(contradictions_found=found, contradictions_resolved=resolved)
 

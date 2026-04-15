@@ -48,8 +48,9 @@ docs/
 # Keep Claude's project instructions local; core.ignoreCase=true on Windows
 # means this entry also matches CLAUDE.md (intentional).
 claude.md
-.claude/settings.local.json
+.claude/
 deberta-nli-onnx/
+
 
 # Model weights — never commit
 *.pt
