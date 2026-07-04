@@ -38,7 +38,7 @@ ruff format .             # format
 | `aingram/consolidation/deberta.py` | `DeBERTaContradictionClassifier` — lazy-loaded DeBERTa-v3 NLI ONNX model for local contradiction detection. Implements `ContradictionClassifier` protocol. |
 | `aingram/consolidation/contradiction.py` | `ContradictionDetector` orchestrator (entity grouping, pair iteration, recency fallback). `LLMContradictionClassifier` wraps `LLMProcessor` as a classifier. |
 | `aingram/graph/` | Knowledge graph traversal for graph-augmented recall. |
-| `aingram/integrations/` | Thin adapters: LangChain, CrewAI, LangGraph, AutoGen, smolagents. |
+| `aingram/integrations/` | Thin adapters: LangChain, CrewAI, LangGraph, AutoGen, smolagents, Hermes. |
 | `aingram/viz/` | Local HTTP visualization server (`aingram viz`). |
 | `aingram/watch.py` | `watch_loop()` — live tail of new memory entries. |
 | `aingram/cli.py` | Typer CLI entry point — all `aingram` subcommands. |

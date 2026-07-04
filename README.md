@@ -215,6 +215,65 @@ Add to your MCP config:
 
 ---
 
+## Hermes Agent
+
+[Aingram ships as a Hermes Agent memory provider.](https://memorilabs.ai/docs/memori-cloud/hermes/quickstart/)
+
+```python
+from aingram.integrations.hermes import AIngramHermesMemory
+
+with AIngramHermesMemory("agent_memory.db") as mem:
+    mem.remember("Faber TAA is the primary strategy.")
+    results = mem.recall("what strategy do we use?")
+```
+
+Or connect via MCP — add to `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  aingram-memory:
+    command: aingram --db /path/to/memory.db mcp
+    enabled: true
+```
+
+Tools available in Hermes: `remember` (store facts), `recall` (semantic search), `get_related`, `reference`, `verify`, `get_experiment_context`.
+
+> Also works with any MCP-compatible agent gateway — including **OpenClaw** (add as an MCP server in your OpenClaw config).
+
+---
+
+### AIngram Hermes 集成（中文）
+
+[Aingram 可作为 Hermes Agent 的持久化记忆插件使用。](https://memorilabs.ai/docs/memori-cloud/hermes/quickstart/)
+
+```python
+from aingram.integrations.hermes import AIngramHermesMemory
+
+with AIngramHermesMemory("agent_memory.db") as mem:
+    mem.remember("Faber TAA 是主要交易策略。")
+    results = mem.recall("我们现在用什么策略？")
+```
+
+通过 MCP 连接 — 在 `~/.hermes/config.yaml` 中添加：
+
+```yaml
+mcp_servers:
+  aingram-memory:
+    command: aingram --db /path/to/memory.db mcp
+    enabled: true
+```
+
+Hermes 中可用的工具：`remember`（存储事实）、`recall`（语义搜索）、`get_related`、`reference`、`verify`、`get_experiment_context`。
+
+> 也兼容任何支持 MCP 的 AI 网关，包括 **OpenClaw**。
+
+**特点：**
+- 🚀 **混合检索** — 向量 + 全文搜索 + 知识图谱三重融合
+- 🔒 **完全本地** — 无需云端，无需 API Key，数据 100% 自主
+- 🗄️ **单文件存储** — 所有记忆保存在一个 SQLite 文件中，便于备份和迁移
+- ✍️ **加密签名** — 每条记忆都经过 Ed25519 签名，防篡改
+- 🇨🇳 **中文友好** — 支持中文语义搜索，准确理解中文表述
+
 ## Quick Start
 
 ```bash

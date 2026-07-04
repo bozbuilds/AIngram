@@ -18,3 +18,4 @@ Each script uses a temporary database under the system temp directory.
 | `02_store_stats.py` | `status()` and entry count introspection |
 | `03_recall_with_entry_type.py` | Filtering recall by `entry_type` |
 | `05_multi_agent_shared_memory.py` | Three async agents sharing one `MemoryStore`; piggyback recall across agents |
+| `06_hermes_memory_provider.py` | Using AIngram as a Hermes Agent memory provider with semantic recall |
