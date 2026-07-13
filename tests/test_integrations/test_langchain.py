@@ -33,8 +33,7 @@ def test_langchain_adapter_messages_returns_list(tmp_path):
     with patch('aingram.integrations.langchain.MemoryStore') as mock_store_cls:
         mock_mem = MagicMock()
         mock_store_cls.return_value = mock_mem
-        mock_mem._engine._lock.__enter__ = MagicMock(return_value=None)
-        mock_mem._engine._lock.__exit__ = MagicMock(return_value=False)
+        mock_mem._engine._lock = MagicMock()  # Python 3.11+: RLock __enter__ is read-only
         mock_mem._engine._conn.execute.return_value.fetchall.return_value = [
             ('observation', '{"text":"hello"}'),
             ('result', '{"text":"world"}'),
